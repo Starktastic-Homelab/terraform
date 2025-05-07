@@ -6,10 +6,6 @@ variable "worker_count" {
   type = number
 }
 
-variable "vm_id_start" {
-  default = 200
-}
-
 variable "name_prefix" {
   default = "kube"
 }
@@ -23,47 +19,36 @@ variable "base_vm_name" {
   description = "Received from Packer's build manifest"
 }
 
-variable "cluster_vip" {
-  type        = string
-  description = "Example: 192.168.1.100/32. Increments of this will be assigned to nodes."
-}
-
-variable "gateway_ip" {
-  type = string
-}
-
 variable "username" {
-  default = "ubuntu"
+  default = "debian"
 }
 
-variable "cpu" {
-  default = "x86-64-v2-AES"
+variable "cpu_type" {
+  default = "host"
 }
 
-variable "master_config" {
-  default = {
-    cores  = 1,
-    memory = 4 * 1024
-  }
+variable "master_cores" {
+  default = 1
 }
 
-variable "worker_config" {
-  default = {
-    cores  = 4
-    memory = 24 * 1024
-  }
+variable "master_memory" {
+  default = 4 * 1024
 }
 
-variable "scsi_controller" {
-  default = "virtio-scsi-single"
+variable "worker_cores" {
+  default = 4
+}
+
+variable "worker_memory" {
+  default = 24 * 1024
 }
 
 variable "cloudinit_storage" {
-  default = "vm-disk-2"
+  default = "local-zfs"
 }
 
 variable "os_storage" {
-  default = "vm-disk-2"
+  default = "vmpool"
 }
 
 variable "os_disk_size" {

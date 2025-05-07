@@ -1,7 +1,7 @@
-output "server_private_ips" {
-  value = [for i in range(var.master_count) : proxmox_vm_qemu.kube_nodes[i].ssh_host]
+output "master_default_ipv4_addresses" {
+  value = module.master_nodes[*].default_ipv4_address
 }
 
-output "agent_private_ips" {
-  value = [for i in range(var.master_count, var.master_count + var.worker_count) : proxmox_vm_qemu.kube_nodes[i].ssh_host]
+output "worker_default_ipv4_addresses" {
+  value = module.worker_nodes[*].default_ipv4_address
 }
