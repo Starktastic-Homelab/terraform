@@ -20,8 +20,8 @@ variable "scsihw" {
 }
 
 variable "os_type" {
-  type        = string
-  default     = "cloud-init"
+  type    = string
+  default = "cloud-init"
 }
 
 variable "ciuser" {
@@ -32,7 +32,7 @@ variable "ciuser" {
 variable "cipassword" {
   type        = string
   description = "Username for cloud-init"
-  default = null
+  default     = null
 }
 
 variable "sshkeys" {

@@ -17,10 +17,10 @@ resource "proxmox_vm_qemu" "vm" {
   cores    = var.cores
   memory   = var.memory
 
-  os_type     = var.os_type
-  ciuser      = var.ciuser
-  cipassword  = var.cipassword
-  sshkeys     = var.sshkeys
+  os_type       = var.os_type
+  ciuser     = var.ciuser
+  cipassword = var.cipassword
+  sshkeys    = var.sshkeys
 
   ipconfig0  = local.ipconfigs[0]
   ipconfig1  = local.ipconfigs[1]
