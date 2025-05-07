@@ -27,13 +27,21 @@ variable "cpu_type" {
   default = "host"
 }
 
-variable "master_cores" {}
+variable "master_cores" {
+  type = number
+}
 
-variable "master_memory" {}
+variable "master_memory" {
+  type = number
+}
 
-variable "worker_cores" {}
+variable "worker_cores" {
+  type = number
+}
 
-variable "worker_memory" {}
+variable "worker_memory" {
+  type = number
+}
 
 variable "cloudinit_storage" {
   default = "local-zfs"
