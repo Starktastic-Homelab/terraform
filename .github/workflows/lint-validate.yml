@@ -36,6 +36,7 @@ jobs:
       - name: Commit & push formatting changes
         if: steps.fmt.outputs.changed_files == 'true'
         run: |
+          echo "Changed files: ${{ steps.fmt.outputs.changed_files }}"
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
