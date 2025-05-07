@@ -1,6 +1,6 @@
 module "master_nodes" {
   source = "./modules/vm"
-  count = var.master_count
+  count  = var.master_count
 
   name = "${var.name_prefix}-master-${format("%02s", count.index + 1)}"
 
@@ -10,22 +10,22 @@ module "master_nodes" {
   cores  = var.master_cores
   memory = var.master_memory
 
-  ciuser    = var.username
-  sshkeys   = sensitive(var.ssh_pub_key)
+  ciuser  = var.username
+  sshkeys = sensitive(var.ssh_pub_key)
 
   network_bridges = var.network_bridges
-  ipconfigs = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
+  ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
 
   cloudinit_storage = var.cloudinit_storage
-  os_storage       = var.os_storage
-  os_disk_size     = var.os_disk_size
+  os_storage        = var.os_storage
+  os_disk_size      = var.os_disk_size
 
   tags = "master"
 }
 
 module "worker_nodes" {
   source = "./modules/vm"
-  count = var.worker_count
+  count  = var.worker_count
 
   name = "${var.name_prefix}-worker-${format("%02s", count.index + 1)}"
 
@@ -35,15 +35,15 @@ module "worker_nodes" {
   cores  = var.worker_cores
   memory = var.worker_memory
 
-  ciuser    = var.username
-  sshkeys   = sensitive(var.ssh_pub_key)
+  ciuser  = var.username
+  sshkeys = sensitive(var.ssh_pub_key)
 
   network_bridges = var.network_bridges
-  ipconfigs = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
+  ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
 
   cloudinit_storage = var.cloudinit_storage
-  os_storage       = var.os_storage
-  os_disk_size     = var.os_disk_size
+  os_storage        = var.os_storage
+  os_disk_size      = var.os_disk_size
 
   tags = "worker"
 }
