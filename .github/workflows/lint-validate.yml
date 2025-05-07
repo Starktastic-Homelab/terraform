@@ -24,20 +24,15 @@ jobs:
       - name: Format Terraform files
         id: fmt
         run: |
-          CHANGED_FILES=$(terraform fmt -recursive .)
+          CHANGED_FILES=$(terraform fmt -recursive . 2>/dev/null)
           echo "changed_files<<EOF" >> $GITHUB_OUTPUT
-          if [ -z "$CHANGED_FILES" ]; then
-            echo 'false' >> $GITHUB_OUTPUT
-          else
-            echo 'true' >> $GITHUB_OUTPUT
-          fi
+          echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Changed files: $CHANGED_FILES"
 
       - name: Commit & push formatting changes
-        if: steps.fmt.outputs.changed_files == 'true'
+        if: steps.fmt.outputs.changed_files != ''
         run: |
-          echo "Changed files: ${{ steps.fmt.outputs.changed_files }}"
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
