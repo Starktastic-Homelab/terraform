@@ -42,10 +42,10 @@ jobs:
       - name: Validate Terraform template
         env:
           # Make sure that validate does not fail due to unset variables
-          TF_TOKEN_app_terraform_io: 'TOKEN'
-          TF_CLOUD_HOSTNAME: 'app.terraform.io'
-          TF_CLOUD_ORGANIZATION: 'organization'
-          TF_WORKSPACE: 'workspace'
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
+          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
+          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
           TF_VAR_base_vm_name: 'base_vm_name'
           TF_VAR_ssh_pub_key: 'ssh_pub_key'
           TF_VAR_master_count: 1
