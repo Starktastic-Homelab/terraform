@@ -32,6 +32,7 @@ jobs:
             echo 'true' >> $GITHUB_OUTPUT
           fi
           echo "EOF" >> $GITHUB_OUTPUT
+          echo "Changed files: $CHANGED_FILES"
 
       - name: Commit & push formatting changes
         if: steps.fmt.outputs.changed_files == 'true'
