@@ -25,6 +25,8 @@ jobs:
         id: fmt
         run: |
           CHANGED_FILES=$(terraform fmt -recursive .)
+          echo "CHANGED FILES:"
+          echo "$CHANGED_FILES"
           echo "changed_files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
