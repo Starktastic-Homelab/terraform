@@ -49,10 +49,9 @@ resource "proxmox_vm_qemu" "vm" {
     }
   }
 
-  # Disk Configuration
   disks {
     ide {
-      ide2 {
+      ide0 {
         cloudinit {
           storage = var.cloudinit_storage
         }
