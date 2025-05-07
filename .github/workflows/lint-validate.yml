@@ -30,7 +30,6 @@ jobs:
           echo "changed_files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          echo "Changed files: $CHANGED_FILES"
 
       - name: Commit & push formatting changes
         if: steps.fmt.outputs.changed_files != ''
@@ -49,6 +48,9 @@ jobs:
           TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
           TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+          PM_API_URL: 'https://proxmox.example.com:8006/api2/json'
+          PM_API_TOKEN_ID: 'id'
+          PM_API_TOKEN_SECRET: 'secret'
           TF_VAR_base_vm_name: 'base_vm_name'
           TF_VAR_ssh_pub_key: 'ssh_pub_key'
           TF_VAR_master_count: 1
