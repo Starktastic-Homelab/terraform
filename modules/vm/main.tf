@@ -17,7 +17,7 @@ resource "proxmox_vm_qemu" "vm" {
   cores    = var.cores
   memory   = var.memory
 
-  os_type       = var.os_type
+  os_type    = var.os_type
   ciuser     = var.ciuser
   cipassword = var.cipassword
   sshkeys    = var.sshkeys
