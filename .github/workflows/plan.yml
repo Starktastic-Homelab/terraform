@@ -1,0 +1,28 @@
+name: Terraform plan
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+  repository_dispatch:
+    types: [packer-build-success]
+
+jobs:
+  terraform-plan:
+    name: Terraform plan
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Extract base_vm_name
+        run: |
+          BASE_VM_NAME="${{ github.event.client_payload.builds[0].custom_data.vm_name }}"
+          echo "BASE_VM_NAME=$BASE_VM_NAME" >> $GITHUB_ENV
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
