@@ -68,12 +68,6 @@ jobs:
         run: |
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
-  
-      - name: Post Plan Output as PR Comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ env.PLAN_OUTPUT }}\n\`\`\`"
 
       - name: Cache Terraform plan
         uses: actions/cache/save@v4
