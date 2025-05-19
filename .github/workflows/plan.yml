@@ -90,6 +90,9 @@ jobs:
     permissions:
       actions: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Post Plan Output as PR Comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
