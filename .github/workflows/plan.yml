@@ -17,9 +17,9 @@ jobs:
 
       - name: Read manifest file
         run: |
-          echo 'manifest<<EOF' >> $GITHUB_OUTPUT
-          cat packer-manifest.json >> $GITHUB_OUTPUT
-          echo -e '\nEOF' >> $GITHUB_OUTPUT
+          echo 'manifest<<EOF' >> $GITHUB_ENV
+          cat packer-manifest.json >> $GITHUB_ENV
+          echo -e '\nEOF' >> $GITHUB_ENV
 
       - name: Extract BASE_VM_NAME
         run: |
