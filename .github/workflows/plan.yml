@@ -7,13 +7,12 @@ on:
     paths-ignore:
       - 'README.md'
 
-permissions:
-  actions: write
-
 jobs:
   clear-cache:
     name: Delete Terraform plan cache
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,6 +27,8 @@ jobs:
     name: Terraform plan
     runs-on: self-hosted
     needs: clear-cache
+    permissions:
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,6 +68,19 @@ jobs:
         run: |
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
+
+      - name: Capture Plan Output
+        run: |
+          PLAN_OUTPUT=$(terraform show -no-color "plan.tfplan")
+          echo "PLAN_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$PLAN_OUTPUT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+  
+      - name: Post Plan Output as PR Comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ env.PLAN_OUTPUT }}\n\`\`\`"
 
       - name: Cache Terraform plan
         uses: actions/cache/save@v4
