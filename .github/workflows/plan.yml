@@ -83,11 +83,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: List directory contents
-        run: ls -la
+      - name: Restore Terraform plan from cache
+        uses: actions/cache/restore@v4
+        with:
+          key: terraform-plan-${{ github.event.pull_request.number }}
+          path: plan.tfplan
 
       - name: Post Plan Output as PR Comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ needs.terraform-plan.outputs.plan }}\n\`\`\`"
+          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n$(terraform show -no-color plan.tfplan)\n\`\`\`"
