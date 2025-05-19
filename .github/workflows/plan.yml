@@ -52,7 +52,7 @@ jobs:
           terraform plan -out='plan.tfplan'
 
       - name: Cache Terraform plan
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
