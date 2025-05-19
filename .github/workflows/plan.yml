@@ -46,7 +46,7 @@ jobs:
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: true
+          terraform_wrapper: false
 
       - name: Create Terraform plan file
         env:
@@ -77,7 +77,10 @@ jobs:
 
       - name: Show Plan Output
         id: plan
-        run: terraform show -no-color plan.tfplan
+        run: |
+          echo 'stdout<<EOF' >> $GITHUB_OUTPUT
+          terraform show -np-color plan.tfplan >> $GITHUB_OUTPUT
+          echo -e '\nEOF' >> $GITHUB_OUTPUT
 
   comment-plan-output:
     name: Comment Plan Output
