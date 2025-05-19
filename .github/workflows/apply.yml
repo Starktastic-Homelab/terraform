@@ -15,11 +15,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Fetch BASE_VM_NAME from artifact
-        id: fetch-artifact
+      - name: Read manifest file
+        run: |
+          echo 'manifest<<EOF' >> $GITHUB_ENV
+          cat packer-manifest.json >> $GITHUB_ENV
+          echo -e '\nEOF' >> $GITHUB_ENV
+
+      - name: Extract BASE_VM_NAME
+        run: |
+          echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
+
+      - name: Identify Last Merged PR
+        run: |
+          LAST_PR=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+          echo "PR_NUMBER=$LAST_PR" >> $GITHUB_ENV
+
+      - name: Download Plan Artifact
         uses: actions/download-artifact@v4
         with:
-          name: terraform-plan-${{ github.event.before.pull_request.number }}
+          name: "terraform-plan-${{ env.PR_NUMBER }}"
+          path: .
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
@@ -44,4 +59,4 @@ jobs:
           TF_VAR_worker_memory: ${{ vars.TF_VAR_WORKER_MEMORY }}
         run: |
           terraform init -upgrade
-          terraform apply -auto-approve "${{ github.event.inputs.plan_file }}"
+          terraform apply -auto-approve plan.tfplan
