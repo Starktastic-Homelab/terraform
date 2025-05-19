@@ -7,6 +7,9 @@ on:
     paths-ignore:
       - 'README.md'
 
+permissions:
+  contents: write
+
 jobs:
   clear-cache:
     name: Delete Terraform plan cache
