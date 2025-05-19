@@ -107,36 +107,24 @@ jobs:
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
         run: terraform init -upgrade
 
-      - name: Terraform plan
+      - name: Terraform show plan
         id: plan
-        # env:
-        #   TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
-        #   TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
-        #   TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-        #   TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
         run: |
-          # export TF_VAR_base_vm_name=$(cat packer-manifest.json | jq -r '.builds[0].custom_data.vm_name')
           terraform show -no-color plan.tfplan
 
-      - name: Update Pull Request
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            const output = `#### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-            <details><summary>Show Plan</summary>
-    
-            \`\`\`\n
-            ${{ steps.plan.outputs.stdout }}
-            \`\`\`
-    
-            </details>
-    
-            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
-    
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
+      - name: Comment on Pull Request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          terraform init -upgrade
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body """
+              ### Terraform Plan 📖`${{ steps.plan.outputs.stdout }}`
+              <details>
+              <summary>Show Plan</summary>
+              ```
+              ${{ steps.plan.outputs.stdout }}
+              ```
+              </details>
+              *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`*
+            """
