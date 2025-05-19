@@ -27,8 +27,6 @@ jobs:
     name: Terraform plan
     runs-on: self-hosted
     needs: clear-cache
-    outputs:
-      plan: ${{ steps.plan.outputs.stdout }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,15 +41,10 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Install NodeJS for terraform_wrapper
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: true
+          terraform_wrapper: false
 
       - name: Create Terraform plan file
         env:
@@ -80,10 +73,6 @@ jobs:
           key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
 
-      - name: Show Plan Output
-        id: plan
-        run: terraform show -no-color plan.tfplan
-
   comment-plan-output:
     name: Comment Plan Output
     runs-on: ubuntu-latest
@@ -93,6 +82,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: List directory contents
+        run: ls -la
 
       - name: Post Plan Output as PR Comment
         env:
