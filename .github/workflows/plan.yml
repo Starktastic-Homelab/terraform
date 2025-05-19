@@ -97,7 +97,7 @@ jobs:
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: true
+          terraform_wrapper: false
 
       - name: Terraform Init
         env:
@@ -107,23 +107,24 @@ jobs:
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
         run: terraform init -upgrade
 
-      - name: Terraform show plan
-        id: plan
-        run: |
-          terraform show -no-color plan.tfplan
-
       - name: Comment on Pull Request
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --body """
-              ### Terraform Plan 📖`${{ steps.plan.outcome }}`
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const output = """
+              ### Terraform Plan 📖
               <details>
               <summary>Show Plan</summary>
               ```
-              ${{ steps.plan.outputs.stdout }}
+              $(terraform show -no-color plan.tfplan)
               ```
               </details>
               *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`*
             """
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
