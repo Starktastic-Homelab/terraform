@@ -17,7 +17,7 @@ jobs:
 
       - name: Read manifest file
         run: |
-          echo 'manifest<<EOF' >> $GITHUB_ENV
+          echo 'manifest<<EOF' >> $GITHUB_OUTPUT
           cat packer-manifest.json >> $GITHUB_OUTPUT
           echo -e '\nEOF' >> $GITHUB_OUTPUT
 
