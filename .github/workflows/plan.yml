@@ -19,7 +19,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh cache delete terraform-plan-${{ github.event.pull_request.number }} --confirm || true
+          gh cache delete terraform-plan-${{ github.event.pull_request.number }} || true
 
   terraform-plan:
     name: Terraform plan
