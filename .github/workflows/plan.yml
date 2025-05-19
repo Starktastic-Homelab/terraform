@@ -96,6 +96,10 @@ jobs:
 
       - name: Post plan output as PR Comment
         env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
+          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
+          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           terraform init -upgrade
