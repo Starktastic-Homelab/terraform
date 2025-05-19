@@ -1,36 +1,32 @@
-name: Terraform plan
+name: Terraform apply
 
-on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths-ignore:
+#       - 'README.md'
 
 jobs:
-  terraform-plan:
-    name: Terraform plan
+  terraform-apply:
+    name: Terraform apply
     runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Read manifest file
-        run: |
-          echo 'manifest<<EOF' >> $GITHUB_ENV
-          cat packer-manifest.json >> $GITHUB_ENV
-          echo -e '\nEOF' >> $GITHUB_ENV
-
-      - name: Extract BASE_VM_NAME
-        run: |
-          echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
+      - name: Fetch BASE_VM_NAME from artifact
+        id: fetch-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.event.before.pull_request.number }}
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
 
-      - name: Create Terraform plan file
+      - name: Apply Terraform plan
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
           TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
@@ -46,13 +42,6 @@ jobs:
           TF_VAR_worker_cores: ${{ vars.TF_VAR_WORKER_CORES }}
           TF_VAR_master_memory: ${{ vars.TF_VAR_MASTER_MEMORY }}
           TF_VAR_worker_memory: ${{ vars.TF_VAR_WORKER_MEMORY }}
-          TF_VAR_base_vm_name: ${{ env.BASE_VM_NAME }}
         run: |
           terraform init -upgrade
-          terraform plan -out='plan.tfplan'
-
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-${{ github.run_id }}
-          path: plan.tfplan
+          terraform apply -auto-approve "${{ github.event.inputs.plan_file }}"
