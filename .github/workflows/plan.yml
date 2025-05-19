@@ -6,8 +6,6 @@ on:
       - main
     paths-ignore:
       - 'README.md'
-  repository_dispatch:
-    types: [packer-build-success]
 
 jobs:
   terraform-plan:
@@ -16,13 +14,45 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        
-      - name: Extract base_vm_name
+
+      - name: Read manifest file
         run: |
-          BASE_VM_NAME="${{ github.event.client_payload.builds[0].custom_data.vm_name }}"
-          echo "BASE_VM_NAME=$BASE_VM_NAME" >> $GITHUB_ENV
+          echo 'manifest<<EOF' >> $GITHUB_ENV
+          cat packer-manifest.json >> $GITHUB_OUTPUT
+          echo -e '\nEOF' >> $GITHUB_OUTPUT
+
+      - name: Extract BASE_VM_NAME
+        run: |
+          echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
+
+      - name: Create Terraform plan file
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
+          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
+          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+          PM_API_URL: ${{ secrets.PM_API_URL }}
+          PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
+          PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
+          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
+          TF_VAR_master_count: ${{ vars.TF_VAR_MASTER_COUNT }}
+          TF_VAR_worker_count: ${{ vars.TF_VAR_WORKER_COUNT }}
+          TF_VAR_master_cores: ${{ vars.TF_VAR_MASTER_CORES }}
+          TF_VAR_worker_cores: ${{ vars.TF_VAR_WORKER_CORES }}
+          TF_VAR_master_memory: ${{ vars.TF_VAR_MASTER_MEMORY }}
+          TF_VAR_worker_memory: ${{ vars.TF_VAR_WORKER_MEMORY }}
+          TF_VAR_base_vm_name: ${{ env.BASE_VM_NAME }}
+        run: |
+          terraform init -upgrade
+          terraform plan -out='plan-${{ github.run_id }}.tfplan'
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan-${{ github.event.pull_request.number }}
+          path: plan-${{ github.run_id }}.tfplan
