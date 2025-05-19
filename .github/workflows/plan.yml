@@ -27,8 +27,8 @@ jobs:
     name: Terraform plan
     runs-on: self-hosted
     needs: clear-cache
-    permissions:
-      pull-requests: write
+    outputs:
+      plan_output: ${{ steps.capture_plan_output.outputs.PLAN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -68,13 +68,6 @@ jobs:
         run: |
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
-
-      - name: Capture Plan Output
-        run: |
-          PLAN_OUTPUT=$(terraform show -no-color "plan.tfplan")
-          echo "PLAN_OUTPUT<<EOF" >> $GITHUB_ENV
-          echo "$PLAN_OUTPUT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
   
       - name: Post Plan Output as PR Comment
         env:
@@ -87,3 +80,24 @@ jobs:
         with:
           key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
+
+      - name: Capture Plan Output
+        id: capture_plan_output
+        run: |
+          PLAN_OUTPUT=$(terraform show -no-color "plan.tfplan")
+          echo "PLAN<<EOF" >> $GITHUB_OUTPUT
+          echo "$PLAN_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  comment-plan-output:
+    name: Comment Plan Output
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    permissions:
+      actions: write
+    steps:
+      - name: Post Plan Output as PR Comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ needs.terraform-plan.outputs.plan_output }}\n\`\`\`"
