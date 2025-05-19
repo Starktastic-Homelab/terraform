@@ -51,6 +51,10 @@ jobs:
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
 
+      - name: Delete cache if exists
+        run: |
+          gh cache delete terraform-plan-${{ github.event.pull_request.number }} --confirm || true
+
       - name: Cache Terraform plan
         uses: actions/cache/save@v4
         with:
