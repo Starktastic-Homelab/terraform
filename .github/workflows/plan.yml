@@ -116,10 +116,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          terraform init -upgrade
           gh pr comment ${{ github.event.pull_request.number }} \
             --body """
-              ### Terraform Plan 📖`${{ steps.plan.outputs.stdout }}`
+              ### Terraform Plan 📖`${{ steps.plan.outcome }}`
               <details>
               <summary>Show Plan</summary>
               ```
