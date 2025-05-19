@@ -114,7 +114,9 @@ jobs:
           TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
           TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
-        run: terraform plan -out='plan.tfplan' -no-color
+        run: |
+          export BASE_VM_NAME=$(cat packer-manifest.json | jq -r '.builds[0].custom_data.vm_name')
+          terraform plan -out='plan.tfplan' -no-color
 
       - name: Update Pull Request
         uses: actions/github-script@v7
