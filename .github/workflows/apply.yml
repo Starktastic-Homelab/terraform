@@ -14,6 +14,8 @@ jobs:
     outputs:
       pr_number: ${{ steps.get_pr.outputs.PR_NUMBER }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Identify Last Merged PR
         id: get_pr

@@ -56,3 +56,4 @@ jobs:
         with:
           name: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
+          overwrite: true
