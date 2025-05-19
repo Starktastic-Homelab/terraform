@@ -89,7 +89,12 @@ jobs:
           key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
 
-      - name: Post Plan Output as PR Comment
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Post plan output as PR Comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
