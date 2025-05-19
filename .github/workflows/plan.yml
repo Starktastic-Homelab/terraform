@@ -104,4 +104,4 @@ jobs:
         run: |
           terraform init -upgrade
           gh pr comment ${{ github.event.pull_request.number }} \
-            --body "### Terraform Plan Output:\n\n\`\`\`terraform\n$(terraform show -no-color plan.tfplan)\n\`\`\`"
+            --body "<details><summary>Show Plan</summary>\`\`\`\n$(terraform show -no-color plan.tfplan)\`\`\`</details>"
