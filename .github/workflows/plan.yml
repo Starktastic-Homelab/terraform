@@ -79,7 +79,7 @@ jobs:
         id: plan
         run: |
           echo 'stdout<<EOF' >> $GITHUB_OUTPUT
-          terraform show -np-color plan.tfplan >> $GITHUB_OUTPUT
+          terraform show -no-color plan.tfplan >> $GITHUB_OUTPUT
           echo -e '\nEOF' >> $GITHUB_OUTPUT
 
   comment-plan-output:
