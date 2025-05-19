@@ -13,7 +13,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Read manifest file
         run: |
@@ -51,9 +51,8 @@ jobs:
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
 
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
+      - name: Cache Terraform plan
+        uses: actions/cache@v4
         with:
-          name: terraform-plan-${{ github.event.pull_request.number }}
+          key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
-          overwrite: true
