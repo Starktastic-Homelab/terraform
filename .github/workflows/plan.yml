@@ -28,7 +28,7 @@ jobs:
     runs-on: self-hosted
     needs: clear-cache
     outputs:
-      plan_output: ${{ steps.capture_plan_output.outputs.PLAN }}
+      plan: ${{ steps.plan.outputs.stdout }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -93,4 +93,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ needs.terraform-plan.steps.plan.outputs.stdout }}\n\`\`\`"
+          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ needs.terraform-plan.outputs.plan }}\n\`\`\`"
