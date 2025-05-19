@@ -15,7 +15,7 @@ jobs:
       pr_number: ${{ steps.get_pr.outputs.PR_NUMBER }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Identify Last Merged PR
         id: get_pr
@@ -32,7 +32,7 @@ jobs:
     needs: fetch-last-pr
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Read manifest file
         run: |
@@ -44,11 +44,11 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Download Plan Artifact
-        uses: actions/download-artifact@v4
+      - name: Restore Terraform plan from cache
+        uses: actions/cache/restore@v4
         with:
-          name: "terraform-plan-${{ needs.fetch-last-pr.outputs.pr_number }}"
-          path: .
+          key: terraform-plan-${{ needs.fetch-last-pr.outputs.pr_number }}
+          path: plan.tfplan
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
