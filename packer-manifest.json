@@ -1,0 +1,16 @@
+{
+  "builds": [
+    {
+      "name": "debian-12",
+      "builder_type": "proxmox-iso",
+      "build_time": 1747646865,
+      "files": null,
+      "artifact_id": "900",
+      "packer_run_uuid": "9a8c7bdc-2f11-a8c1-95b4-f0e9ae2dc21e",
+      "custom_data": {
+        "vm_name": "packer-debian-12.11.0-80a5b75b-3941-4f95-9e17-8501829274ef"
+      }
+    }
+  ],
+  "last_run_uuid": "9a8c7bdc-2f11-a8c1-95b4-f0e9ae2dc21e"
+}
