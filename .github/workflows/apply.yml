@@ -8,9 +8,23 @@ on:
       - 'README.md'
 
 jobs:
+  fetch-last-pr:
+    name: Fetch last merged PR
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.get_pr.outputs.PR_NUMBER }}
+    steps:
+
+      - name: Identify Last Merged PR
+        id: get_pr
+        run: |
+          LAST_PR=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+          echo "PR_NUMBER=$LAST_PR" >> $GITHUB_OUTPUT
+
   terraform-apply:
     name: Terraform apply
     runs-on: self-hosted
+    needs: fetch-last-pr
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -25,15 +39,10 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Identify Last Merged PR
-        run: |
-          LAST_PR=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
-          echo "PR_NUMBER=$LAST_PR" >> $GITHUB_ENV
-
       - name: Download Plan Artifact
         uses: actions/download-artifact@v4
         with:
-          name: "terraform-plan-${{ env.PR_NUMBER }}"
+          name: "terraform-plan-${{ needs.fetch-last-pr.outputs.pr_number }}"
           path: .
 
       - name: Install Terraform
