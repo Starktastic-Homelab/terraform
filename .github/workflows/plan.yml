@@ -78,10 +78,8 @@ jobs:
       - name: Capture Plan Output
         id: capture_plan_output
         run: |
-          PLAN_OUTPUT=$(terraform show -no-color "plan.tfplan")
-          echo "PLAN<<EOF" >> $GITHUB_OUTPUT
-          echo "$PLAN_OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          PLAN_OUTPUT=$(terraform show -no-color "plan.tfplan" | base64 -w 0)
+          echo "PLAN=$PLAN_OUTPUT" >> $GITHUB_OUTPUT
 
   comment-plan-output:
     name: Comment Plan Output
@@ -97,4 +95,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n${{ needs.terraform-plan.outputs.plan_output }}\n\`\`\`"
+          PLAN_OUTPUT=$(echo "${{ needs.terraform-plan.outputs.plan_output }}" | base64 -d)
+          gh pr comment ${{ github.event.pull_request.number }} --body "### Terraform Plan Output:\n\n\`\`\`terraform\n$PLAN_OUTPUT\n\`\`\`"
