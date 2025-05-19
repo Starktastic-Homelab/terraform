@@ -43,10 +43,15 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
+      - name: Install NodeJS for terraform_wrapper
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: false
+          terraform_wrapper: true
 
       - name: Create Terraform plan file
         env:
@@ -77,10 +82,7 @@ jobs:
 
       - name: Show Plan Output
         id: plan
-        run: |
-          echo 'stdout<<EOF' >> $GITHUB_OUTPUT
-          terraform show -no-color plan.tfplan >> $GITHUB_OUTPUT
-          echo -e '\nEOF' >> $GITHUB_OUTPUT
+        run: terraform show -no-color plan.tfplan
 
   comment-plan-output:
     name: Comment Plan Output
