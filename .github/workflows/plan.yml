@@ -52,7 +52,7 @@ jobs:
           terraform plan -out='plan-${{ github.run_id }}.tfplan'
 
       - name: Upload plan artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.event.pull_request.number }}
           path: plan-${{ github.run_id }}.tfplan
