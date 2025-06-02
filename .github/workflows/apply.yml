@@ -28,13 +28,6 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Restore Terraform plan from cache
-        uses: actions/cache/restore@v4
-        with:
-          key: terraform-plan-${{ github.event.pull_request.number }}
-          path: plan.tfplan
-          fail-on-cache-miss: true
-
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
