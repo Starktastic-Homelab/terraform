@@ -43,7 +43,7 @@ jobs:
             const output = `
               <details>
               <summary>Terraform Plan 📖</summary>
-              \`\`\`
+              \`\`\`\n
               ${process.env.PLAN}
               \`\`\`
               </details>
