@@ -1,0 +1,61 @@
+on:
+  workflow_call:
+
+jobs:
+  comment-plan-output:
+    name: Comment plan output
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore Terraform plan from cache
+        uses: actions/cache/restore@v4
+        with:
+          key: terraform-plan-${{ github.event.pull_request.number }}
+          path: plan.tfplan
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform show plan
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
+          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
+          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+        run: |
+          terraform init -upgrade
+          plan=$(terraform show -no-color plan.tfplan).workflow_run
+          echo 'PLAN<<EOF' >> $GITHUB_ENV
+          echo "$plan" >> $GITHUB_ENV
+          echo -e '\nEOF' >> $GITHUB_ENV
+
+      - name: Comment on Pull Request
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const output = `
+            ## Terraform Plan 📖
+            <details>
+            <summary>Click to expand</summary>
+
+            \`\`\`
+            ${{ env.PLAN }}
+            \`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });

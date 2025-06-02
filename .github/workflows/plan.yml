@@ -8,9 +8,25 @@ on:
       - 'README.md'
 
 jobs:
+  clear-cache:
+    name: Delete Terraform plan cache
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Delete cache if exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache delete terraform-plan-${{ github.event.pull_request.number }} || true
+
   terraform-plan:
     name: Terraform plan
     runs-on: self-hosted
+    needs: clear-cache
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,7 +68,14 @@ jobs:
           terraform plan -out='plan.tfplan'
 
       - name: Cache Terraform plan
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
+
+  post-plan:
+    permissions:
+      pull-requests: write
+    uses: ./.github/workflows/pr-comment-plan.yml
+    needs: terraform-plan
+    secrets: inherit
