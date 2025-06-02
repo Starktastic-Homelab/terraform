@@ -40,16 +40,16 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
-            const output = '''
+            const output = `
               ### Terraform Plan 📖
               <details>
               <summary>Show Plan</summary>
-              ```
+              \`\`\`
               ${{ env.PLAN }}
-              ```
+              \`\`\`
               </details>
-              *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`*
-            ''';
+              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
+            `;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
