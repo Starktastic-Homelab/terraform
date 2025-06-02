@@ -74,6 +74,8 @@ jobs:
           path: plan.tfplan
 
   post-plan:
+    permissions:
+      pull-requests: write
     uses: ./.github/workflows/pr-comment-plan.yml
     needs: terraform-plan
     secrets: inherit
