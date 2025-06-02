@@ -45,7 +45,7 @@ jobs:
             <summary>Terraform Plan 📖</summary>
 
             \`\`\`
-            ${process.env.PLAN}
+            ${{ env.PLAN }}
             \`\`\`
 
             </details>
