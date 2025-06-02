@@ -49,6 +49,7 @@ jobs:
         with:
           key: terraform-plan-${{ needs.fetch-last-pr.outputs.pr_number }}
           path: plan.tfplan
+          fail-on-cache-miss: true
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
