@@ -21,7 +21,7 @@ jobs:
       - name: Download plan from release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download pr-${{ github.event.pull_request.number }} --pattern tfplan.binary
+        run: gh release download pr-${{ github.event.pull_request.number }} --pattern plan.tfplan
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
