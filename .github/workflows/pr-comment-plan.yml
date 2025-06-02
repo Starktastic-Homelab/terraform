@@ -42,10 +42,12 @@ jobs:
           script: |
             const output = `
               <details>
-              <summary>Terraform Plan 📖</summary>
-              \`\`\`\n
-              ${process.env.PLAN}
-              \`\`\`
+                <summary>Terraform Plan 📖</summary>
+
+                \`\`\`
+                ${process.env.PLAN}
+                \`\`\`
+
               </details>
               *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
             `;
