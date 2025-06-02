@@ -1,35 +1,19 @@
 name: Terraform apply
 
 on:
-  push:
+  pull_request_target:
     branches:
       - main
+    types:
+      - closed
     paths-ignore:
       - 'README.md'
 
 jobs:
-  fetch-last-pr:
-    name: Fetch last merged PR
-    runs-on: ubuntu-latest
-    outputs:
-      pr_number: ${{ steps.get_pr.outputs.PR_NUMBER }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Identify Last Merged PR
-        id: get_pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-        run: |
-          LAST_PR=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
-          echo "PR_NUMBER=$LAST_PR" >> $GITHUB_OUTPUT
-
   terraform-apply:
+    if: github.event.pull_request.merged == true
     name: Terraform apply
     runs-on: self-hosted
-    needs: fetch-last-pr
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,7 +31,7 @@ jobs:
       - name: Restore Terraform plan from cache
         uses: actions/cache/restore@v4
         with:
-          key: terraform-plan-${{ needs.fetch-last-pr.outputs.pr_number }}
+          key: terraform-plan-${{ github.event.pull_request.number }}
           path: plan.tfplan
           fail-on-cache-miss: true
 
