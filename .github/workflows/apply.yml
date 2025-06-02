@@ -71,6 +71,7 @@ jobs:
           TF_VAR_worker_cores: ${{ vars.TF_VAR_WORKER_CORES }}
           TF_VAR_master_memory: ${{ vars.TF_VAR_MASTER_MEMORY }}
           TF_VAR_worker_memory: ${{ vars.TF_VAR_WORKER_MEMORY }}
+          TF_VAR_base_vm_name: ${{ env.BASE_VM_NAME }}
         run: |
           terraform init -upgrade
           terraform apply -auto-approve plan.tfplan
