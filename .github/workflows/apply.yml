@@ -10,10 +10,30 @@ on:
       - 'README.md'
 
 jobs:
+  download-plan:
+    if: github.event.pull_request.merged == true
+    name: Download Terraform plan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download plan from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download pr-${{ github.event.pull_request.number }} --pattern tfplan.binary
+
+      - name: Upload Terraform plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: plan.tfplan
+
   terraform-apply:
     if: github.event.pull_request.merged == true
     name: Terraform apply
     runs-on: self-hosted
+    needs: download-plan
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,12 +48,10 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Restore Terraform plan from cache
-        uses: actions/cache/restore@v4
+      - name: Restore Terraform plan artifact
+        uses: actions/download-artifact@v4
         with:
-          key: terraform-plan-${{ github.event.pull_request.number }}
-          path: plan.tfplan
-          fail-on-cache-miss: true
+          name: tfplan
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
