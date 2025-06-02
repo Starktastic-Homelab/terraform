@@ -71,7 +71,7 @@ jobs:
         with:
           name: tfplan
 
-      - name: Create Draft Release with Plan
+      - name: Create draft release with plan
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
