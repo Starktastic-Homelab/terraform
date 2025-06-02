@@ -41,11 +41,10 @@ jobs:
           github-token: ${{ github.token }}
           script: |
             const output = `
-              ### Terraform Plan 📖
               <details>
-              <summary>Show Plan</summary>
+              <summary>Terraform Plan 📖</summary>
               \`\`\`
-              ${{ env.PLAN }}
+              ${process.env.PLAN}
               \`\`\`
               </details>
               *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
