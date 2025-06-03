@@ -53,6 +53,8 @@ jobs:
       
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
+        with:
+          arch: ${{ runner.arch }}
 
       - name: Upload Terraform plan to MinIO
         env:
