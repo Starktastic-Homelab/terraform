@@ -50,6 +50,9 @@ jobs:
         run: |
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
+      
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
 
       - name: Upload Terraform plan to MinIO
         env:

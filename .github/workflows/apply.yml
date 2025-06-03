@@ -34,6 +34,9 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
+
       - name: Download Terraform plan from MinIO
         run: aws --no-verify-ssl s3 cp s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan plan.tfplan
 
@@ -64,10 +67,13 @@ jobs:
           terraform apply -auto-approve plan.tfplan
 
   cleanup:
-    if: github.event.pull_request.merged == true
+    if: always()
     name: Cleanup after apply
     runs-on: self-hosted
     needs: terraform-apply
     steps:
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
+
       - name: Remove Terraform plan file from MinIO
         run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan
