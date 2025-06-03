@@ -10,30 +10,15 @@ on:
       - 'README.md'
 
 jobs:
-  download-plan:
-    if: github.event.pull_request.merged == true
-    name: Download Terraform plan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download plan from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download pr-${{ github.event.pull_request.number }} --pattern plan.tfplan
-
-      - name: Upload Terraform plan artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan
-          path: plan.tfplan
-
   terraform-apply:
     if: github.event.pull_request.merged == true
     name: Terraform apply
     runs-on: self-hosted
-    needs: download-plan
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,10 +33,8 @@ jobs:
         run: |
           echo 'BASE_VM_NAME=${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }} >> $GITHUB_ENV'
 
-      - name: Restore Terraform plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
+      - name: Download Terraform plan from MinIO
+        run: aws --no-verify-ssl s3 cp s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan plan.tfplan
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
@@ -78,3 +61,6 @@ jobs:
         run: |
           terraform init -upgrade
           terraform apply -auto-approve plan.tfplan
+      
+      - name: Remove Terraform plan file from MinIO
+        run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan
