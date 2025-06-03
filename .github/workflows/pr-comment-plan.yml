@@ -44,7 +44,7 @@ jobs:
             <details>
             <summary>Click to expand</summary>
 
-            \`\`\`
+            \`\`\`HCL
             ${{ env.PLAN }}
             \`\`\`
 
