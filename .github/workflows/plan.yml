@@ -51,36 +51,18 @@ jobs:
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
 
+      - name: Upload Terraform plan to MinIO
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+        run: aws --no-verify-ssl s3 cp plan.tfplan s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
+
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: plan.tfplan
-
-  draft-release:
-    runs-on: ubuntu-latest
-    needs: terraform-plan
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Restore Terraform plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-
-      - name: Create draft release with plan
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          gh release create pr-${PR_NUMBER} \
-            --title "Terraform Plan for PR #${PR_NUMBER}" \
-            --notes "Draft plan for infrastructure changes." \
-            --draft \
-            plan.tfplan
 
   comment:
     permissions:
