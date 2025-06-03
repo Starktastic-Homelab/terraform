@@ -44,7 +44,8 @@ variable "worker_memory" {
 }
 
 variable "cloudinit_storage" {
-  default = "local-zfs"
+  #default = "local-zfs"
+  default = "local-lvm" # TEMPORARY
 }
 
 variable "os_storage" {
