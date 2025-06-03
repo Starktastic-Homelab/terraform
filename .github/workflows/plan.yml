@@ -52,13 +52,17 @@ jobs:
           terraform plan -out='plan.tfplan'
 
       - name: Upload Terraform plan to MinIO
-        uses: hannut91/aws-cli@1.40.28
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+        run: aws --no-verify-ssl s3 cp plan.tfplan s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
+
+      - name: Upload Terraform plan artifact
+        uses: actions/upload-artifact@v4
         with:
-          args: --no-verify-ssl s3 cp plan.tfplan s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
+          name: tfplan
+          path: plan.tfplan
 
   comment:
     permissions:
