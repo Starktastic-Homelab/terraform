@@ -16,7 +16,7 @@ module "master_nodes" {
   network_bridges = var.network_bridges
   ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
 
-  cloudinit_storage = var.cloudinit_storage
+  cloudinit_storage = var.os_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
@@ -41,7 +41,7 @@ module "worker_nodes" {
   network_bridges = var.network_bridges
   ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
 
-  cloudinit_storage = var.cloudinit_storage
+  cloudinit_storage = var.os_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
