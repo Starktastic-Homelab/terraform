@@ -10,7 +10,7 @@ resource "proxmox_vm_qemu" "vm" {
   target_node = var.target_node
   clone       = var.clone
   scsihw      = var.scsihw
-  boot        = "order=virtio0"
+  bootdisk    = "virtio0"
   onboot      = true
   agent       = 1
 
@@ -18,7 +18,7 @@ resource "proxmox_vm_qemu" "vm" {
   cores    = var.cores
   memory   = var.memory
 
-  os_type    = var.os_type
+  # os_type    = var.os_type
   ciuser     = var.ciuser
   cipassword = var.cipassword
   sshkeys    = var.sshkeys
