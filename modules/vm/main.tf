@@ -20,7 +20,7 @@ resource "proxmox_vm_qemu" "vm" {
     type    = var.cpu_type
   }
 
-  memory   = var.memory
+  memory = var.memory
 
   os_type    = var.os_type
   ciuser     = var.ciuser
