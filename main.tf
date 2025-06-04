@@ -20,7 +20,7 @@ module "master_nodes" {
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
-  tags = "master"
+  tags = "k3s,master"
 }
 
 module "worker_nodes" {
@@ -45,5 +45,5 @@ module "worker_nodes" {
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
-  tags = "worker"
+  tags = "k3s,worker"
 }
