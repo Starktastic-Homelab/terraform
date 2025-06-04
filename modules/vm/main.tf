@@ -14,8 +14,12 @@ resource "proxmox_vm_qemu" "vm" {
   onboot      = true
   agent       = 1
 
-  cpu_type = var.cpu_type
-  cores    = var.cores
+  cpu {
+    sockets = 1
+    cores   = var.cores
+    type    = var.cpu_type
+  }
+
   memory   = var.memory
 
   os_type    = var.os_type
