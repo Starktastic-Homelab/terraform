@@ -10,6 +10,7 @@ resource "proxmox_vm_qemu" "vm" {
   target_node = var.target_node
   clone       = var.clone
   scsihw      = var.scsihw
+  boot        = "order=virtio0"
   onboot      = true
   agent       = 1
 
