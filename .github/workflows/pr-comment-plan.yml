@@ -29,7 +29,7 @@ jobs:
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
         run: |
           terraform init -upgrade
-          plan=$(terraform show -no-color plan.tfplan).workflow_run
+          plan=$(terraform show -no-color plan.tfplan)
           echo 'PLAN<<EOF' >> $GITHUB_ENV
           echo "$plan" >> $GITHUB_ENV
           echo -e '\nEOF' >> $GITHUB_ENV
