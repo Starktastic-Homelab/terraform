@@ -8,6 +8,7 @@ on:
       - closed
     paths-ignore:
       - 'README.md'
+      - 'renovate.json'
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
