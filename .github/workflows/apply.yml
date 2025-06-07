@@ -34,7 +34,7 @@ jobs:
 
       - name: Download Terraform plan from MinIO
         if: github.event_name == 'pull_request_target'
-        uses: ./github/actions/s3-cp
+        uses: ./.github/actions/s3-cp
         with:
           aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
           aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
