@@ -1,3 +1,7 @@
+locals {
+  ipconfigs = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
+}
+
 module "master_nodes" {
   source = "./modules/vm"
   count  = var.master_count
@@ -14,7 +18,7 @@ module "master_nodes" {
   sshkeys = sensitive(var.ssh_pub_key)
 
   network_bridges = var.network_bridges
-  ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
+  ipconfigs       = local.ipconfigs
 
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
@@ -39,7 +43,7 @@ module "worker_nodes" {
   sshkeys = sensitive(var.ssh_pub_key)
 
   network_bridges = var.network_bridges
-  ipconfigs       = [for _ in range(length(var.network_bridges)) : "ip=dhcp,ip6=dhcp"]
+  ipconfigs       = local.ipconfigs
 
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage

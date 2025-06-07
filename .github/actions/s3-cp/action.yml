@@ -1,0 +1,53 @@
+name: Copy file to/from S3
+description: Installs AWS CLI and copies files between local and S3-compatible storage
+
+inputs:
+  aws_access_key_id:
+    description: AWS access key ID
+    required: true
+  aws_secret_access_key:
+    description: AWS secret access key
+    required: true
+  aws_endpoint_url:
+    description: AWS endpoint URL (e.g., https://s3.amazonaws.com or https://minio.example.com)
+    required: true
+  source:
+    description: Source path (can be local or s3://...)
+    required: true
+  destination:
+    description: Destination path (can be local or s3://...)
+    required: true
+  recursive:
+    description: Copy files recursively
+    default: 'false'
+  quiet:
+    description: Suppress output
+    default: 'false'
+  region:
+    description: AWS region (e.g., us-east-1)
+    required: false
+  no_verify_ssl:
+    description: Disable SSL verification
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install AWS CLI
+      uses: unfor19/install-aws-cli-action@v1
+      with:
+        arch: ${{ runner.arch }}
+
+    - name: Copy file(s)
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws_access_key_id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws_secret_access_key }}
+        AWS_ENDPOINT_URL: ${{ inputs.aws_endpoint_url }}
+        AWS_REGION: ${{ inputs.region }}
+      run: |
+        FLAGS=""
+        [[ "${{ inputs.recursive }}" == "true" ]] && FLAGS+=" --recursive"
+        [[ "${{ inputs.quiet }}" == "true" ]] && FLAGS+=" --quiet"
+        [[ "${{ inputs.no_verify_ssl }}" == "true" ]] && FLAGS+=" --no-verify-ssl"
+        aws s3 cp "${{ inputs.source }}" "${{ inputs.destination }}" $FLAGS
