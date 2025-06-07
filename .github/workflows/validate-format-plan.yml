@@ -104,17 +104,14 @@ jobs:
           terraform init -upgrade
           terraform plan -out='plan.tfplan'
       
-      - name: Install AWS CLI
-        uses: unfor19/install-aws-cli-action@v1
-        with:
-          arch: ${{ runner.arch }}
-
       - name: Upload Terraform plan to MinIO
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-          AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
-        run: aws --no-verify-ssl s3 cp plan.tfplan s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
+        uses: ./github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          source: plan.tfplan
+          destination: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
