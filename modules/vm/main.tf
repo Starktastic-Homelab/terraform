@@ -20,7 +20,7 @@ resource "proxmox_vm_qemu" "vm" {
     type    = var.cpu_type
   }
 
-  memory =                   var.memory
+  memory = var.memory
 
   os_type    = var.os_type
   ciuser     = var.ciuser
@@ -48,9 +48,9 @@ resource "proxmox_vm_qemu" "vm" {
     for_each = var.network_bridges
 
     content {
-      id        = index(var.network_bridges, network.value)
-      model  =    "virtio"
-      bridge= network.value
+      id     = index(var.network_bridges, network.value)
+      model  = "virtio"
+      bridge = network.value
     }
   }
 
