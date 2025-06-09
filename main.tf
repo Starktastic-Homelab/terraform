@@ -22,7 +22,7 @@ module "master_nodes" {
 
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
-  os_disk_size      =     var.os_disk_size
+  os_disk_size      = var.os_disk_size
 
   tags = "k3s,master"
 }
