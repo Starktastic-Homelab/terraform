@@ -76,7 +76,7 @@ jobs:
 
           git add .
           git commit -m "style: terraform fmt"
-          git push -f origin HEAD:"${{ github.head_ref || github.ref_name }}"
+          git push
 
   plan:
     name: Terraform plan
