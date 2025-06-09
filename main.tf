@@ -20,9 +20,9 @@ module "master_nodes" {
   network_bridges = var.network_bridges
   ipconfigs       = local.ipconfigs
 
-  cloudinit_storage = var.cloudinit_storage
-  os_storage        = var.os_storage
-  os_disk_size      = var.os_disk_size
+  cloudinit_storage =  var.cloudinit_storage
+  os_storage         = var.os_storage
+  os_disk_size     = var.os_disk_size
 
   tags = "k3s,master"
 }
