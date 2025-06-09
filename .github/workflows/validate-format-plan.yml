@@ -75,8 +75,8 @@ jobs:
           git config user.email "actions@github.com"
 
           git add .
-          git commit -m "style: terraform fmt"
-          git push
+          git commit -m "[skip ci] style: terraform fmt"
+          git push -f origin HEAD:"${{ github.head_ref || github.ref_name }}"
 
   plan:
     name: Terraform plan
