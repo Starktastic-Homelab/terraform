@@ -20,7 +20,7 @@ module "master_nodes" {
   network_bridges = var.network_bridges
   ipconfigs       = local.ipconfigs
 
-  cloudinit_storage = var.cloudinit_storage
+  cloudinit_storage    = var.cloudinit_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
