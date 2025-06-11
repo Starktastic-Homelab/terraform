@@ -37,4 +37,4 @@ jobs:
 
           git add .
           git commit -m "style: terraform fmt"
-          git push --force-with-lease
+          git push -f
