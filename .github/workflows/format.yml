@@ -5,8 +5,8 @@ on:
     paths-ignore:
       - '!*.tf'
 
-permissions:
-  contents: write
+env:
+  GITHUB_TOKEN: ${{ secrets.TERRAFORM_FORMAT_PAT }}
 
 jobs:
   format:
