@@ -5,6 +5,9 @@ on:
     paths-ignore:
       - '!*.tf'
 
+permissions:
+  contents: write
+
 jobs:
   format:
     name: Format Terraform files

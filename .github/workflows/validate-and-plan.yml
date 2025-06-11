@@ -8,9 +8,6 @@ on:
       - 'README.md'
       - 'renovate.json'
 
-permissions:
-  contents: write
-
 env:
   TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
   TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
