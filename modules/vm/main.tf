@@ -29,7 +29,7 @@ resource "proxmox_vm_qemu" "vm" {
 
   ipconfig0  = local.ipconfigs[0]
   ipconfig1  = local.ipconfigs[1]
-  ipconfig2  = local.ipconfigs[2]
+  ipconfig2  =     local.ipconfigs[2]
   ipconfig3  = local.ipconfigs[3]
   ipconfig4  = local.ipconfigs[4]
   ipconfig5  = local.ipconfigs[5]
