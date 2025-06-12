@@ -20,7 +20,7 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Format Terraform files
+      - name: Run Terraform fmt command
         id: fmt
         run: |
           CHANGED_FILES=$(terraform fmt -recursive .)
@@ -35,5 +35,5 @@ jobs:
           git config user.email "actions@github.com"
 
           git add .
-          git commit -m "style: terraform fmt"
+          git commit -m "[skip ci] style: terraform fmt"
           git push
