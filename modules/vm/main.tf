@@ -28,7 +28,7 @@ resource "proxmox_vm_qemu" "vm" {
   sshkeys    = var.sshkeys
 
   ipconfig0  = local.ipconfigs[0]
-  ipconfig1  =    local.ipconfigs[1]
+  ipconfig1  = local.ipconfigs[1]
   ipconfig2  = local.ipconfigs[2]
   ipconfig3  = local.ipconfigs[3]
   ipconfig4  = local.ipconfigs[4]
