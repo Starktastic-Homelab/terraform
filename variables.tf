@@ -14,6 +14,11 @@ variable "proxmox_target_node" {
   default = "pve"
 }
 
+variable "start_vm_id" {
+  type        = number
+  default = 200
+}
+
 variable "base_vm_name" {
   type        = string
   description = "Received from Packer's build manifest"
