@@ -6,6 +6,7 @@ module "master_nodes" {
   source = "./modules/vm"
   count  = var.master_count
 
+  vm_id = var.start_vm_id + count.index
   name = "${var.name_prefix}-master-${format("%02s", count.index + 1)}"
 
   target_node = var.proxmox_target_node
@@ -31,6 +32,7 @@ module "worker_nodes" {
   source = "./modules/vm"
   count  = var.worker_count
 
+  vm_id = var.start_vm_id + var.master_count + count.index
   name = "${var.name_prefix}-worker-${format("%02s", count.index + 1)}"
 
   target_node = var.proxmox_target_node

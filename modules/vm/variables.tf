@@ -1,3 +1,8 @@
+variable "vm_id" {
+  type = number
+  description = "Unique ID for the VM"
+}
+
 variable "name" {
   type        = string
   description = "Name of the VM"
