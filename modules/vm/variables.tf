@@ -1,5 +1,5 @@
 variable "vm_id" {
-  type = number
+  type        = number
   description = "Unique ID for the VM"
 }
 

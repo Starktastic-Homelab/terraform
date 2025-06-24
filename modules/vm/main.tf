@@ -6,7 +6,7 @@ locals {
 }
 
 resource "proxmox_vm_qemu" "vm" {
-  vmid          = var.vm_id
+  vmid        = var.vm_id
   name        = var.name
   target_node = var.target_node
   clone       = var.clone

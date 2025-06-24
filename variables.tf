@@ -15,7 +15,7 @@ variable "proxmox_target_node" {
 }
 
 variable "start_vm_id" {
-  type        = number
+  type    = number
   default = 200
 }
 
