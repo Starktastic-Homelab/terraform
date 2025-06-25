@@ -4,6 +4,29 @@ This repository defines and manages a self-hosted Kubernetes homelab using [Terr
 
 ---
 
+## 📦 Repository Structure
+
+```
+.
+├── .github/
+│   ├── actions/              # Custom composite GitHub Actions
+│   │   └── s3-cp/            # Generic S3 copy utility (upload/download)
+│   └── workflows/            # CI workflows: validate, format, plan, apply
+├── modules/
+│   └── vm/                   # Terraform module for VM provisioning
+├── main.tf                  # Root Terraform config entry point
+├── providers.tf            # Provider configuration (e.g., Proxmox)
+├── variables.tf            # Input variable declarations
+├── outputs.tf              # Output values
+├── packer-manifest.json    # Output from Packer build (used in planning)
+├── renovate.json           # Renovate bot configuration
+├── .gitignore              # Git ignored files
+├── LICENSE                 # MIT License
+└── README.md
+```
+
+---
+
 ## 🚀 Workflows (GitHub Actions)
 
 Automated CI/CD pipelines are defined in `.github/workflows`:
