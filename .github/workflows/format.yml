@@ -1,3 +1,5 @@
+name: Format Terraform Files
+
 on:
   push:
     branches:
