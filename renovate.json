@@ -6,8 +6,11 @@
   "packageRules": [
     {
       "matchDatasources": ["terraform-provider"],
+      "matchDepTypes": ["required_provider"],
+      "matchPackageNames": ["telmate/proxmox"],
       "rangeStrategy": "bump",
-      "enabled": true
+      "enabled": true,
+      "versioning": "loose"
     }
   ]
 }
