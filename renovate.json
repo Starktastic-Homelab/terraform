@@ -5,7 +5,7 @@
   ],
   "packageRules": [
     {
-      "matchDatasources": ["terraform-providers"],
+      "matchDatasources": ["terraform-provider"],
       "rangeStrategy": "bump"
     }
   ]
