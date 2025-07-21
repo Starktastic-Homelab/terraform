@@ -70,10 +70,10 @@ variable "subnet_mask" {
 
 variable "network_interfaces" {
   type = list(object({
-    bridge  = string
-    base_cidr = string
+    bridge       = string
+    base_cidr    = string
     start_offset = number
-    gateway  = optional(string)
+    gateway      = optional(string)
   }))
 }
 
