@@ -1,23 +1,28 @@
 locals {
   network_bridges = [for nic in var.network_interfaces : nic.bridge]
 
-  default_gateways = [
-    for nic in var.network_interfaces :
-    # fallback to .1 in the subnet if gateway not specified
-    coalesce(nic.gateway, cidrhost("${nic.start_ip}/${var.subnet_mask}", 1))
+  subnet_masks = [for nic in var.network_interfaces : split("/", nic.base_cidr)[1]]
+
+  gateways = [
+    for i, nic in var.network_interfaces :
+    coalesce(
+      nic.gateway,
+      # fallback to .1 in the subnet if gateway not specified
+      cidrhost(nic.base_cidr, 1)
+    )
   ]
 
   master_ipconfigs = [
     for idx in range(var.master_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost("${nic.start_ip}/${var.subnet_mask}", idx)},gw=${local.default_gateways[i]}"
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx)}/${local.subnet_masks[i]},gw=${local.gateways[i]}"
     ]
   ]
 
   worker_ipconfigs = [
     for idx in range(var.worker_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost("${nic.start_ip}/${var.subnet_mask}", idx + var.master_count)},gw=${local.default_gateways[i]}"
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx + var.master_count)}/${local.subnet_masks[i]},gw=${local.gateways[i]}"
     ]
   ]
 }
