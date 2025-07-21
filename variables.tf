@@ -64,6 +64,18 @@ variable "network_bridges" {
   default = ["vmbr0", "vmbr1"]
 }
 
+variable "subnet_mask" {
+  default = "24"
+}
+
+variable "network_interfaces" {
+  type = list(object({
+    bridge  = string
+    start_ip = string
+    gateway  = optional(string)
+  }))
+}
+
 variable "ssh_pub_key" {
   type = string
 }
