@@ -1,10 +1,12 @@
 network_interfaces = [
   {
     bridge   = "vmbr0"
-    start_ip = "10.9.9.50"
+    base_cidr = "10.9.9.0/24"
+    start_offset = 50
   },
   {
     bridge   = "vmbr1"
-    start_ip = "10.9.8.50"
+    base_cidr = "10.9.8.0/24"
+    start_offset = 50
   }
 ]
