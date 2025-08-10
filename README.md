@@ -17,7 +17,6 @@ This repository defines and manages a self-hosted Kubernetes homelab using [Terr
 ├── main.tf                  # Root Terraform config entry point
 ├── providers.tf            # Provider configuration (e.g., Proxmox)
 ├── variables.tf            # Input variable declarations
-├── outputs.tf              # Output values
 ├── packer-manifest.json    # Output from Packer build (used in planning)
 ├── renovate.json           # Renovate bot configuration
 ├── .gitignore              # Git ignored files
