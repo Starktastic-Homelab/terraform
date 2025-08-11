@@ -10,6 +10,6 @@ terraform {
 }
 
 provider "proxmox" {
-  pm_tls_insecure = true
+  pm_tls_insecure             = true
   pm_minimum_permission_check = false
 }
