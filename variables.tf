@@ -78,7 +78,7 @@ variable "network_interfaces" {
 }
 
 variable "nameserver" {
-  default     = "1.1.1.1"
+  default = "1.1.1.1"
 }
 
 variable "ssh_pub_key" {
