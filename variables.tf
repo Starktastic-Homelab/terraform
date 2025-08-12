@@ -78,7 +78,8 @@ variable "network_interfaces" {
 }
 
 variable "nameserver" {
-  type = optional(string)
+  default = ""
+  description = "Default DNS nameserver will be set to gateway if not specified"
 }
 
 variable "ssh_pub_key" {
