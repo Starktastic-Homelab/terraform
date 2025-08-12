@@ -12,6 +12,8 @@ locals {
     )
   ]
 
+  nameserver = coalesce(var.nameserver, local.gateways[0])
+
   master_ipconfigs = [
     for idx in range(var.master_count) : [
       for i, nic in var.network_interfaces :
@@ -45,6 +47,7 @@ module "master_nodes" {
 
   network_bridges   = local.network_bridges
   ipconfigs         = local.master_ipconfigs[count.index]
+  nameserver        = local.nameserver
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
@@ -70,6 +73,7 @@ module "worker_nodes" {
 
   network_bridges   = local.network_bridges
   ipconfigs         = local.worker_ipconfigs[count.index]
+  nameserver        = local.nameserver
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
