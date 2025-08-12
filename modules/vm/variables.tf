@@ -95,6 +95,6 @@ variable "ipconfigs" {
 }
 
 variable "nameserver" {
-  type = string
+  type        = string
   description = "Default DNS nameserver"
 }

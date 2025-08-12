@@ -78,7 +78,7 @@ variable "network_interfaces" {
 }
 
 variable "nameserver" {
-  default = ""
+  default     = ""
   description = "Default DNS nameserver will be set to gateway if not specified"
 }
 
