@@ -6,14 +6,14 @@ locals {
   master_ipconfigs = [
     for idx in range(var.master_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx)}/${local.subnet_masks[i]}" + (nic.gateway != null ? ",gw=${nic.gateway}" : "")
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx)}/${local.subnet_masks[i]}${nic.gateway != null ? ",gw=${nic.gateway}" : ""}"
     ]
   ]
 
   worker_ipconfigs = [
     for idx in range(var.worker_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx + var.master_count)}/${local.subnet_masks[i]}" + (nic.gateway != null ? ",gw=${nic.gateway}" : "")
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx + var.master_count)}/${local.subnet_masks[i]}${nic.gateway != null ? ",gw=${nic.gateway}" : ""}"
     ]
   ]
 }
