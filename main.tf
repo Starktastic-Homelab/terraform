@@ -3,28 +3,17 @@ locals {
 
   subnet_masks = [for nic in var.network_interfaces : split("/", nic.base_cidr)[1]]
 
-  gateways = [
-    for i, nic in var.network_interfaces :
-    coalesce(
-      nic.gateway,
-      # fallback to .1 in the subnet if gateway not specified
-      cidrhost(nic.base_cidr, 1)
-    )
-  ]
-
-  nameserver = coalesce(var.nameserver, local.gateways[0])
-
   master_ipconfigs = [
     for idx in range(var.master_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx)}/${local.subnet_masks[i]},gw=${local.gateways[i]}"
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx)}/${local.subnet_masks[i]}" + (nic.gateway ? ",gw=${nic.gateway}" : "")
     ]
   ]
 
   worker_ipconfigs = [
     for idx in range(var.worker_count) : [
       for i, nic in var.network_interfaces :
-      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx + var.master_count)}/${local.subnet_masks[i]},gw=${local.gateways[i]}"
+      "ip=${cidrhost(nic.base_cidr, nic.start_offset + idx + var.master_count)}/${local.subnet_masks[i]}" + (nic.gateway ? ",gw=${nic.gateway}" : "")
     ]
   ]
 }
@@ -47,7 +36,7 @@ module "master_nodes" {
 
   network_bridges   = local.network_bridges
   ipconfigs         = local.master_ipconfigs[count.index]
-  nameserver        = local.nameserver
+  nameserver        = var.nameserver
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
@@ -73,7 +62,7 @@ module "worker_nodes" {
 
   network_bridges   = local.network_bridges
   ipconfigs         = local.worker_ipconfigs[count.index]
-  nameserver        = local.nameserver
+  nameserver        = var.nameserver
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
