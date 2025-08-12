@@ -93,3 +93,8 @@ variable "ipconfigs" {
   description = "List of ipconfig strings per interface"
   default     = ["ip=dhcp,ip6=dhcp"]
 }
+
+variable "nameserver" {
+  type = string
+  description = "Default DNS nameserver"
+}

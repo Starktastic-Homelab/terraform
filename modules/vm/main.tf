@@ -44,6 +44,7 @@ resource "proxmox_vm_qemu" "vm" {
   ipconfig13 = local.ipconfigs[13]
   ipconfig14 = local.ipconfigs[14]
   ipconfig15 = local.ipconfigs[15]
+  nameserver = var.nameserver
 
   dynamic "network" {
     for_each = var.network_bridges

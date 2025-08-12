@@ -77,6 +77,10 @@ variable "network_interfaces" {
   }))
 }
 
+variable "nameserver" {
+  type = optional(string)
+}
+
 variable "ssh_pub_key" {
   type = string
 }
