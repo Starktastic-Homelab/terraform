@@ -80,7 +80,7 @@ jobs:
           destination: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
 
       - name: Upload Terraform plan artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: tfplan
           path: plan.tfplan
@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Restore Terraform plan artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: tfplan
 
