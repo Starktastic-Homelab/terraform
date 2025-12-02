@@ -6,14 +6,14 @@ locals {
 }
 
 resource "proxmox_vm_qemu" "vm" {
-  vmid        = var.vm_id
-  name        = var.name
-  target_node = var.target_node
-  clone       = var.clone
-  scsihw      = var.scsihw
-  boot        = "order=virtio0"
-  start_at_node_boot       = true
-  agent       = 1
+  vmid               = var.vm_id
+  name               = var.name
+  target_node        = var.target_node
+  clone              = var.clone
+  scsihw             = var.scsihw
+  boot               = "order=virtio0"
+  start_at_node_boot = true
+  agent              = 1
 
   cpu {
     sockets = 1
