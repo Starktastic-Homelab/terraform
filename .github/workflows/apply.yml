@@ -42,6 +42,36 @@ jobs:
           source: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan
           destination: plan.tfplan
 
+      - name: Download Terraform plan exitcode from MinIO
+        if: github.event_name == 'pull_request_target'
+        uses: ./.github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          source: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.exitcode
+          destination: plan.exitcode
+
+      - name: Check for changes
+        id: check
+        run: |
+          # Default to true for manual dispatch
+          HAS_CHANGES="true"
+          
+          if [[ -f "plan.exitcode" ]]; then
+            CODE=$(cat plan.exitcode)
+            # Code 2 means changes present. Code 0 means no changes.
+            if [[ "$CODE" == "2" ]]; then
+              HAS_CHANGES="true"
+              echo "⚠️ Changes detected (Exit Code 2)."
+            else
+              HAS_CHANGES="false"
+              echo "✅ No changes (Exit Code $CODE)."
+            fi
+          fi
+          
+          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -72,6 +102,15 @@ jobs:
             terraform apply -auto-approve
           fi
 
+      - name: Trigger Ansible Deployment
+        # Run if Apply Succeeded AND Changes were detected
+        if: success() && steps.check.outputs.has_changes == 'true'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.ANSIBLE_DISPATCH_TOKEN }}
+          repository: MrStarktastic/homelab-ansible
+          event-type: infrastructure-changed
+
   cleanup:
     name: Cleanup after apply
     runs-on: self-hosted
@@ -83,5 +122,5 @@ jobs:
         with:
           arch: ${{ runner.arch }}
 
-      - name: Remove Terraform plan file from MinIO
-        run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.tfplan
+      - name: Remove Terraform plan & exitcode files from MinIO
+        run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ env.PR_NUMBER }}.*
