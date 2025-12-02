@@ -44,6 +44,7 @@ resource "proxmox_vm_qemu" "vm" {
   ipconfig13 = local.ipconfigs[13]
   ipconfig14 = local.ipconfigs[14]
   ipconfig15 = local.ipconfigs[15]
+
   nameserver = var.nameserver
 
   dynamic "network" {
@@ -68,8 +69,10 @@ resource "proxmox_vm_qemu" "vm" {
     virtio {
       virtio0 {
         disk {
-          size    = var.os_disk_size
-          storage = var.os_storage
+          size     = var.os_disk_size
+          storage  = var.os_storage
+          iothread = true
+          discard  = true
         }
       }
     }
