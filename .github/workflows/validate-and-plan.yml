@@ -17,12 +17,6 @@ env:
   PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
   PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
   TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
-  TF_VAR_master_count: ${{ vars.TF_VAR_MASTER_COUNT }}
-  TF_VAR_worker_count: ${{ vars.TF_VAR_WORKER_COUNT }}
-  TF_VAR_master_cores: ${{ vars.TF_VAR_MASTER_CORES }}
-  TF_VAR_worker_cores: ${{ vars.TF_VAR_WORKER_CORES }}
-  TF_VAR_master_memory: ${{ vars.TF_VAR_MASTER_MEMORY }}
-  TF_VAR_worker_memory: ${{ vars.TF_VAR_WORKER_MEMORY }}
 
 jobs:
   validate:
