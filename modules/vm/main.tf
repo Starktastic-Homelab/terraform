@@ -91,4 +91,10 @@ resource "proxmox_vm_qemu" "vm" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      startup_shutdown
+    ]
+  }
 }
