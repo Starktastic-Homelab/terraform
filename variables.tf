@@ -60,6 +60,14 @@ variable "os_disk_size" {
   default = "32G"
 }
 
+variable "longhorn_storage" {
+  default = "vmpool"
+}
+
+variable "longhorn_disk_size" {
+  default = "200G"
+}
+
 variable "network_bridges" {
   default = ["vmbr0", "vmbr1"]
 }
