@@ -65,7 +65,7 @@ variable "longhorn_storage" {
 }
 
 variable "longhorn_disk_size" {
-  default = "200G"
+  default = "150G"
 }
 
 variable "network_bridges" {
