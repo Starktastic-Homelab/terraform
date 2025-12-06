@@ -75,9 +75,8 @@ resource "proxmox_vm_qemu" "vm" {
           discard  = true
         }
       }
-    }
 
-    dynamic "virtio1" {
+      dynamic "virtio1" {
         for_each = var.longhorn_disk_size != null ? [1] : []
         content {
           disk {
@@ -88,6 +87,7 @@ resource "proxmox_vm_qemu" "vm" {
           }
         }
       }
+    }
   }
 
   tags = var.tags
