@@ -82,7 +82,7 @@ variable "longhorn_disk_size" {
 variable "longhorn_storage" {
   type        = string
   description = "Storage pool for the Longhorn disk"
-  default = ""
+  default     = ""
 }
 
 variable "tags" {
