@@ -53,19 +53,11 @@ variable "cloudinit_storage" {
 }
 
 variable "os_storage" {
-  default = "vmpool"
+  default = "vm-pool"
 }
 
 variable "os_disk_size" {
   default = "32G"
-}
-
-variable "longhorn_storage" {
-  default = "vmpool"
-}
-
-variable "longhorn_disk_size" {
-  default = "150G"
 }
 
 variable "network_bridges" {

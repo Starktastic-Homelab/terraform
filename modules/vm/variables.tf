@@ -73,18 +73,6 @@ variable "os_storage" {
   description = "Storage location for OS disk"
 }
 
-variable "longhorn_disk_size" {
-  type        = string
-  description = "Size of the dedicated Longhorn data disk (e.g., '200G'). Set to null to skip."
-  default     = null
-}
-
-variable "longhorn_storage" {
-  type        = string
-  description = "Storage pool for the Longhorn disk"
-  default     = ""
-}
-
 variable "tags" {
   type        = string
   description = "Tags for the VM"

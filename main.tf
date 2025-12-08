@@ -66,8 +66,6 @@ module "worker_nodes" {
   cloudinit_storage  = var.cloudinit_storage
   os_storage         = var.os_storage
   os_disk_size       = var.os_disk_size
-  longhorn_storage   = var.longhorn_storage
-  longhorn_disk_size = var.longhorn_disk_size
 
   tags = "k3s,worker"
 }
