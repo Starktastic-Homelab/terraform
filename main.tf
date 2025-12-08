@@ -60,12 +60,12 @@ module "worker_nodes" {
   ciuser  = var.username
   sshkeys = var.ssh_pub_key
 
-  network_bridges    = local.network_bridges
-  ipconfigs          = local.worker_ipconfigs[count.index]
-  nameserver         = var.nameserver
-  cloudinit_storage  = var.cloudinit_storage
-  os_storage         = var.os_storage
-  os_disk_size       = var.os_disk_size
+  network_bridges   = local.network_bridges
+  ipconfigs         = local.worker_ipconfigs[count.index]
+  nameserver        = var.nameserver
+  cloudinit_storage = var.cloudinit_storage
+  os_storage        = var.os_storage
+  os_disk_size      = var.os_disk_size
 
   tags = "k3s,worker"
 }
