@@ -75,18 +75,6 @@ resource "proxmox_vm_qemu" "vm" {
           discard  = true
         }
       }
-
-      dynamic "virtio1" {
-        for_each = var.longhorn_disk_size != null ? [1] : []
-        content {
-          disk {
-            size     = var.longhorn_disk_size
-            storage  = var.longhorn_storage
-            iothread = true
-            discard  = true
-          }
-        }
-      }
     }
   }
 
