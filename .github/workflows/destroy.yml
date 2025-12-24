@@ -13,6 +13,8 @@ jobs:
   destroy:
     name: Terraform destroy
     runs-on: self-hosted
+    container:
+      image: hashicorp/terraform:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -22,11 +24,6 @@ jobs:
           echo 'manifest<<EOF' >> $GITHUB_ENV
           cat packer-manifest.json >> $GITHUB_ENV
           echo -e '\nEOF' >> $GITHUB_ENV
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
 
       - name: Destroy
         env:

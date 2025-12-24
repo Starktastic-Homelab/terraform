@@ -42,6 +42,8 @@ jobs:
     name: Terraform plan
     runs-on: self-hosted
     needs: validate
+    container:
+      image: hashicorp/terraform:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -51,11 +53,6 @@ jobs:
           echo 'manifest<<EOF' >> $GITHUB_ENV
           cat packer-manifest.json >> $GITHUB_ENV
           echo -e '\nEOF' >> $GITHUB_ENV
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
 
       - name: Create Terraform plan file
         env:
@@ -84,7 +81,7 @@ jobs:
           aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
           source: plan.tfplan
-          destination: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.tfplan
+          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
       
       - name: Upload ExitCode to MinIO
         uses: ./.github/actions/s3-cp
@@ -93,7 +90,7 @@ jobs:
           aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
           source: plan.exitcode
-          destination: s3://${{ secrets.MINIO_BUCKET_NAME }}/pr-${{ github.event.pull_request.number }}.exitcode
+          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v6
