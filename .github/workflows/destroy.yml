@@ -13,6 +13,8 @@ jobs:
   destroy:
     name: Terraform destroy
     runs-on: self-hosted
+    container:
+      image: hashicorp/terraform:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -22,11 +24,6 @@ jobs:
           echo 'manifest<<EOF' >> $GITHUB_ENV
           cat packer-manifest.json >> $GITHUB_ENV
           echo -e '\nEOF' >> $GITHUB_ENV
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
 
       - name: Destroy
         env:
@@ -40,5 +37,5 @@ jobs:
           TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
           TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
         run: |
-          terraform init -upgrade
+          terraform init
           terraform destroy -auto-approve

@@ -33,11 +33,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install AWS CLI
-      uses: unfor19/install-aws-cli-action@v1
-      with:
-        arch: ${{ runner.arch }}
-
     - name: Copy file(s)
       shell: bash
       env:
