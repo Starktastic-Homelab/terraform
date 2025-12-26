@@ -62,6 +62,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     container:
       image: hashicorp/terraform:latest
+    needs: download-from-min-io
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
