@@ -35,7 +35,7 @@ jobs:
         env:
           TF_VAR_base_vm_name: 'base_vm_name'
         run: |
-          terraform init -upgrade
+          terraform init
           terraform validate
 
   plan:
@@ -58,7 +58,7 @@ jobs:
         env:
           TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
         run: |
-          terraform init -upgrade
+          terraform init
 
           set +e
           terraform plan -detailed-exitcode -out='plan.tfplan'
@@ -74,6 +74,37 @@ jobs:
           
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
+      - name: Upload Terraform plan artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: tfplan
+          path: plan.tfplan
+
+      - name: Upload Terraform exitcode artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: exitcode
+          path: plan.exitcode
+
+  upload-to-min-io:
+    name: Upload Terraform plan and exitcode to MinIO
+    runs-on: self-hosted
+    needs: plan
+    container:
+      image: awscli/awscli:latest
+    steps:
+      - name: Download Terraform plan artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: tfplan
+          path: plan.tfplan
+      
+      - name: Download Terraform exitcode artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: exitcode
+          path: plan.exitcode
+
       - name: Upload Terraform plan to MinIO
         uses: ./.github/actions/s3-cp
         with:
@@ -82,7 +113,7 @@ jobs:
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
           source: plan.tfplan
           destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
-      
+
       - name: Upload ExitCode to MinIO
         uses: ./.github/actions/s3-cp
         with:
@@ -91,12 +122,6 @@ jobs:
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
           source: plan.exitcode
           destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
-
-      - name: Upload Terraform plan artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: tfplan
-          path: plan.tfplan
 
   comment:
     name: Comment plan in Pull Request
@@ -125,7 +150,7 @@ jobs:
           TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
           TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
         run: |
-          terraform init -upgrade
+          terraform init
           echo 'PLAN<<EOF' >> $GITHUB_ENV
           terraform show -no-color plan.tfplan >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
