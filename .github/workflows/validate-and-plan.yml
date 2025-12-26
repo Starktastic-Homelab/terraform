@@ -97,13 +97,11 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: tfplan
-          path: plan.tfplan
       
       - name: Download Terraform exitcode artifact
         uses: actions/download-artifact@v7
         with:
           name: exitcode
-          path: plan.exitcode
 
       - name: Upload Terraform plan to MinIO
         uses: ./.github/actions/s3-cp
