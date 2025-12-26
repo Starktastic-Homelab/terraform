@@ -19,6 +19,43 @@ env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:
+  download-from-min-io:
+    name: Download Terraform plan and exitcode from MinIO
+    runs-on: self-hosted
+    container:
+      image: amazon/aws-cli:latest
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
+    steps:
+      - name: Download Terraform plan from MinIO
+        uses: ./.github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          source: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
+          destination: plan.tfplan
+
+      - name: Download Terraform plan exitcode from MinIO
+        uses: ./.github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          source: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
+          destination: plan.exitcode
+
+      - name: Upload Terraform plan artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: tfplan
+          path: plan.tfplan
+
+      - name: Upload Terraform exitcode artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: exitcode
+          path: plan.exitcode
+
   apply:
     name: Terraform apply
     runs-on: self-hosted
@@ -35,25 +72,17 @@ jobs:
           cat packer-manifest.json >> $GITHUB_ENV
           echo -e '\nEOF' >> $GITHUB_ENV
 
-      - name: Download Terraform plan from MinIO
+      - name: Download Terraform plan artifact
         if: github.event_name == 'pull_request_target'
-        uses: ./.github/actions/s3-cp
+        uses: actions/download-artifact@v7
         with:
-          aws_access_key_id: ${{ env.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ env.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
-          source: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ env.PR_NUMBER }}.tfplan
-          destination: plan.tfplan
+          name: tfplan
 
-      - name: Download Terraform plan exitcode from MinIO
+      - name: Download Terraform exitcode artifact
         if: github.event_name == 'pull_request_target'
-        uses: ./.github/actions/s3-cp
+        uses: actions/download-artifact@v7
         with:
-          aws_access_key_id: ${{ env.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ env.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
-          source: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ env.PR_NUMBER }}.exitcode
-          destination: plan.exitcode
+          name: exitcode
 
       - name: Check for changes
         id: check
@@ -106,14 +135,11 @@ jobs:
   cleanup:
     name: Cleanup after apply
     runs-on: self-hosted
-    if: github.event_name == 'pull_request_target' && always()
+    container:
+      image: amazon/aws-cli:latest
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && always()
     needs: apply
     steps:
-      - name: Install AWS CLI
-        uses: unfor19/install-aws-cli-action@v1
-        with:
-          arch: ${{ runner.arch }}
-
       - name: Remove Terraform plan & exitcode files from MinIO
         run: |
           for extension in tfplan exitcode; do
