@@ -19,34 +19,21 @@ env:
   TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
 
 jobs:
-  validate:
-    name: Validate Terraform template
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Validate
-        env:
-          TF_VAR_base_vm_name: 'base_vm_name'
-        run: |
-          terraform init
-          terraform validate
-
-  plan:
+  validate-and-plan:
     name: Terraform plan
     runs-on: self-hosted
-    needs: validate
     container:
       image: hashicorp/terraform:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Validate Terraform template
+        env:
+          TF_VAR_base_vm_name: 'base_vm_name'
+        run: |
+          terraform init
+          terraform validate
 
       - name: Read manifest file
         run: |
@@ -58,14 +45,15 @@ jobs:
         env:
           TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
         run: |
-          terraform init
-
           set +e
-          terraform plan -detailed-exitcode -out='plan.tfplan'
+          terraform plan -no-color -detailed-exitcode -out='plan.tfplan' > plan.log
           EXIT_CODE=$?
           set -e
 
+          cat plan.log
+
           echo "$EXIT_CODE" > plan.exitcode
+          base64 plan.log > plan.log.b64
 
           if [ $EXIT_CODE -eq 1 ]; then
             echo "❌ Terraform Plan failed with error."
@@ -78,18 +66,20 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: tfplan
-          path: plan.tfplan
+          path: |
+            - plan.tfplan
+            - plan.exitcode
 
-      - name: Upload Terraform exitcode artifact
+      - name: Upload plan log artifact
         uses: actions/upload-artifact@v6
         with:
-          name: exitcode
-          path: plan.exitcode
+          name: planlog
+          path: plan.log.b64
 
   upload-to-min-io:
     name: Upload Terraform plan and exitcode to MinIO
     runs-on: self-hosted
-    needs: plan
+    needs: validate-and-plan
     container:
       image: amazon/aws-cli:latest
     steps:
@@ -97,11 +87,6 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: tfplan
-      
-      - name: Download Terraform exitcode artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: exitcode
 
       - name: Upload Terraform plan to MinIO
         uses: ./.github/actions/s3-cp
@@ -124,34 +109,22 @@ jobs:
   comment:
     name: Comment plan in Pull Request
     runs-on: ubuntu-latest
-    needs: plan
+    needs: validate-and-plan
     permissions:
       pull-requests: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Restore Terraform plan artifact
+      - name: Download Terraform plan log artifact
         uses: actions/download-artifact@v7
         with:
-          name: tfplan
+          name: planlog
 
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Terraform show plan
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
-          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
-          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+      - name: Terraform decode plan log
         run: |
-          terraform init
-          echo 'PLAN<<EOF' >> $GITHUB_ENV
-          terraform show -no-color plan.tfplan >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
+          base64 -d plan.log.b64 > plan.log
+          PLAN=$(cat plan.log)
+          echo "PLAN<<EOF" >> $GITHUB_ENV
+          echo "$PLAN" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Comment on Pull Request
         env:
