@@ -122,7 +122,4 @@ jobs:
     needs: apply
     steps:
       - name: Remove Terraform plan & exitcode files from MinIO
-        run: |
-          for extension in tfplan exitcode; do
-            aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.${extension}
-          done
+        run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }} --recursive --quiet
