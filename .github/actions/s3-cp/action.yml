@@ -9,10 +9,10 @@ inputs:
     description: AWS secret access key
     required: true
   aws_endpoint_url:
-    description: AWS endpoint URL (e.g., https://s3.amazonaws.com or https://minio.example.com)
+    description: AWS endpoint URL
     required: true
   source:
-    description: Source path (can be local or s3://...)
+    description: Source path(s). Supports multiline strings for multiple files.
     required: true
   destination:
     description: Destination path (can be local or s3://...)
@@ -24,8 +24,9 @@ inputs:
     description: Suppress output
     default: 'false'
   region:
-    description: AWS region (e.g., us-east-1)
+    description: AWS region
     required: false
+    default: 'us-east-1'
   no_verify_ssl:
     description: Disable SSL verification
     default: 'false'
@@ -40,9 +41,14 @@ runs:
         AWS_SECRET_ACCESS_KEY: ${{ inputs.aws_secret_access_key }}
         AWS_ENDPOINT_URL: ${{ inputs.aws_endpoint_url }}
         AWS_REGION: ${{ inputs.region }}
+        SOURCES: ${{ inputs.source }}
       run: |
         FLAGS=""
         [[ "${{ inputs.recursive }}" == "true" ]] && FLAGS+=" --recursive"
         [[ "${{ inputs.quiet }}" == "true" ]] && FLAGS+=" --quiet"
         [[ "${{ inputs.no_verify_ssl }}" == "true" ]] && FLAGS+=" --no-verify-ssl"
-        aws s3 cp "${{ inputs.source }}" "${{ inputs.destination }}" $FLAGS
+
+        echo "$SOURCES" | while IFS= read -r src; do
+          [ -z "$src" ] && continue
+          aws s3 cp "$src" "${{ inputs.destination }}" $FLAGS
+        done

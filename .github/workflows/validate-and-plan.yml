@@ -88,6 +88,19 @@ jobs:
         with:
           name: tfplan
 
+      - name: Upload Terraform plan and exitcode to MinIO
+        uses: ./.github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          source: |
+            plan.tfplan
+            plan.exitcode
+          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
+          recursive: 'true'
+          no_verify_ssl: 'true'
+
       - name: Upload Terraform plan to MinIO
         uses: ./.github/actions/s3-cp
         with:

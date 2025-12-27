@@ -11,50 +11,36 @@ on:
       - 'renovate.json'
   workflow_dispatch:
 
-env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-  AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
-  MINIO_TF_PLAN_BUCKET: ${{ secrets.MINIO_TF_PLAN_BUCKET }}
-  PR_NUMBER: ${{ github.event.pull_request.number }}
-
 jobs:
   download-from-min-io:
     name: Download Terraform plan and exitcode from MinIO
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
     runs-on: self-hosted
     container:
       image: amazon/aws-cli:latest
     if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
     steps:
-      - name: Download Terraform plan from MinIO
+      - name: Download Terraform plan and exitcode from MinIO
         uses: ./.github/actions/s3-cp
         with:
           aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
           aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
-          source: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
-          destination: plan.tfplan
+          source: |
+            s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
+            s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
+          destination: .
 
-      - name: Download Terraform plan exitcode from MinIO
-        uses: ./.github/actions/s3-cp
-        with:
-          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
-          source: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
-          destination: plan.exitcode
-
-      - name: Upload Terraform plan artifact
+      - name: Upload Terraform plan and exitcode artifacts
         uses: actions/upload-artifact@v6
         with:
           name: tfplan
-          path: plan.tfplan
-
-      - name: Upload Terraform exitcode artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: exitcode
-          path: plan.exitcode
+          path: |
+            plan.tfplan
+            plan.exitcode
 
   apply:
     name: Terraform apply
@@ -79,12 +65,6 @@ jobs:
         with:
           name: tfplan
 
-      - name: Download Terraform exitcode artifact
-        if: github.event_name == 'pull_request_target'
-        uses: actions/download-artifact@v7
-        with:
-          name: exitcode
-
       - name: Check for changes
         id: check
         run: |
@@ -107,10 +87,9 @@ jobs:
 
       - name: Apply Terraform plan
         env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
-          TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
-          TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-          TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
           PM_API_URL: ${{ secrets.PM_API_URL }}
           PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
           PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
@@ -144,5 +123,5 @@ jobs:
       - name: Remove Terraform plan & exitcode files from MinIO
         run: |
           for extension in tfplan exitcode; do
-            aws --no-verify-ssl s3 rm s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ env.PR_NUMBER }}.${extension}
+            aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.${extension}
           done
