@@ -34,6 +34,14 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Debug Files
+      shell: bash
+      run: |
+        echo "=== listing current directory ==="
+        ls -la
+        echo "=== checking if plan.tfplan is a file or dir ==="
+        ls -ld plan.tfplan
+
     - name: Copy file(s)
       shell: bash
       env:
