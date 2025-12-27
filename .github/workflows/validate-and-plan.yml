@@ -9,9 +9,9 @@ on:
       - 'renovate.json'
 
 env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-  AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+  MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+  MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+  MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
   MINIO_TF_PLAN_BUCKET: ${{ secrets.MINIO_TF_PLAN_BUCKET }}
   PM_API_URL: ${{ secrets.PM_API_URL }}
   PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
