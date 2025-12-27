@@ -96,6 +96,8 @@ jobs:
           aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
           source: plan.tfplan
           destination: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
+          no_verify_ssl: 'true'
+
       - name: Upload ExitCode to MinIO
         uses: ./.github/actions/s3-cp
         with:
@@ -104,6 +106,8 @@ jobs:
           aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
           source: plan.exitcode
           destination: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
+          no_verify_ssl: 'true'
+
   comment:
     name: Comment plan in Pull Request
     runs-on: ubuntu-latest

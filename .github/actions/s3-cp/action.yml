@@ -28,7 +28,7 @@ inputs:
     required: false
   no_verify_ssl:
     description: Disable SSL verification
-    default: 'true'
+    default: 'false'
 
 runs:
   using: 'composite'
