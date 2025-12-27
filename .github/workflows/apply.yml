@@ -30,9 +30,10 @@ jobs:
           aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
           aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
           source: |
-            s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
-            s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
+            s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
           destination: .
+          recursive: 'true'
+          no_verify_ssl: 'true'
 
       - name: Upload Terraform plan and exitcode artifacts
         uses: actions/upload-artifact@v6
