@@ -14,10 +14,6 @@ on:
 jobs:
   download-from-min-io:
     name: Download Terraform plan and exitcode from MinIO
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
     runs-on: self-hosted
     container:
       image: amazon/aws-cli:latest
@@ -116,6 +112,10 @@ jobs:
   cleanup:
     name: Cleanup after apply
     runs-on: self-hosted
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
     container:
       image: amazon/aws-cli:latest
     if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && always()
