@@ -9,10 +9,10 @@ on:
       - 'renovate.json'
 
 env:
-  TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN }}
-  TF_CLOUD_HOSTNAME: ${{ secrets.TF_CLOUD_HOSTNAME }}
-  TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-  TF_WORKSPACE: ${{ secrets.TF_WORKSPACE }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+  AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+  MINIO_TF_PLAN_BUCKET: ${{ secrets.MINIO_TF_PLAN_BUCKET }}
   PM_API_URL: ${{ secrets.PM_API_URL }}
   PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
   PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
@@ -91,21 +91,19 @@ jobs:
       - name: Upload Terraform plan to MinIO
         uses: ./.github/actions/s3-cp
         with:
-          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          aws_access_key_id: ${{ env.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ env.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
           source: plan.tfplan
-          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
-
+          destination: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.tfplan
       - name: Upload ExitCode to MinIO
         uses: ./.github/actions/s3-cp
         with:
-          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          aws_access_key_id: ${{ env.MINIO_ACCESS_KEY }}
+          aws_secret_access_key: ${{ env.MINIO_SECRET_KEY }}
+          aws_endpoint_url: ${{ env.MINIO_ENDPOINT }}
           source: plan.exitcode
-          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
-
+          destination: s3://${{ env.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}.exitcode
   comment:
     name: Comment plan in Pull Request
     runs-on: ubuntu-latest
