@@ -42,7 +42,11 @@ jobs:
   apply:
     name: Terraform apply
     runs-on: self-hosted
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: |
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event.pull_request.merged == true
+      )
     container:
       image: hashicorp/terraform:latest
     needs: download-from-min-io
@@ -83,7 +87,7 @@ jobs:
           echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
 
       - name: Apply Terraform plan
-        if: success() && steps.check.outputs.has_changes == 'true'
+        if: steps.check.outputs.has_changes == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
@@ -103,7 +107,7 @@ jobs:
 
       # - name: Trigger Ansible Deployment
       #   # Run if Apply Succeeded AND Changes were detected
-      #   if: success() && steps.check.outputs.has_changes == 'true'
+      #   if: steps.check.outputs.has_changes == 'true'
       #   uses: peter-evans/repository-dispatch@v4
       #   with:
       #     token: ${{ secrets.ORG_DISPATCH_TOKEN }}
