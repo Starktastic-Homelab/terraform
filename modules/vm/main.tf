@@ -86,8 +86,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci0.value.host
-          pcie   = try(pci0.value.pcie, false)
-          rombar = try(pci0.value.rombar, true)
+          pcie       = try(pci0.value.pcie, false)
+          rombar     = try(pci0.value.rombar, true)
         }
       }
     }
@@ -96,8 +96,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci1.value.host
-          pcie   = try(pci1.value.pcie, false)
-          rombar = try(pci1.value.rombar, true) 
+          pcie       = try(pci1.value.pcie, false)
+          rombar     = try(pci1.value.rombar, true)
         }
       }
     }
@@ -106,8 +106,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci2.value.host
-          pcie   = try(pci2.value.pcie, false)
-          rombar = try(pci2.value.rombar, true)
+          pcie       = try(pci2.value.pcie, false)
+          rombar     = try(pci2.value.rombar, true)
         }
       }
     }
@@ -116,8 +116,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci3.value.host
-          pcie   = try(pci3.value.pcie, false)
-          rombar = try(pci3.value.rombar, true)
+          pcie       = try(pci3.value.pcie, false)
+          rombar     = try(pci3.value.rombar, true)
         }
       }
     }
@@ -126,8 +126,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci4.value.host
-          pcie   = try(pci4.value.pcie, false)
-          rombar = try(pci4.value.rombar, true)
+          pcie       = try(pci4.value.pcie, false)
+          rombar     = try(pci4.value.rombar, true)
         }
       }
     }
@@ -136,8 +136,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci5.value.host
-          pcie   = try(pci5.value.pcie, false)
-          rombar = try(pci5.value.rombar, true)
+          pcie       = try(pci5.value.pcie, false)
+          rombar     = try(pci5.value.rombar, true)
         }
       }
     }
@@ -146,8 +146,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci6.value.host
-          pcie   = try(pci6.value.pcie, false)
-          rombar = try(pci6.value.rombar, true)
+          pcie       = try(pci6.value.pcie, false)
+          rombar     = try(pci6.value.rombar, true)
         }
       }
     }
@@ -156,8 +156,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci7.value.host
-          pcie   = try(pci7.value.pcie, false)
-          rombar = try(pci7.value.rombar, true)
+          pcie       = try(pci7.value.pcie, false)
+          rombar     = try(pci7.value.rombar, true)
         }
       }
     }
@@ -166,8 +166,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci8.value.host
-          pcie   = try(pci8.value.pcie, false)
-          rombar = try(pci8.value.rombar, true)
+          pcie       = try(pci8.value.pcie, false)
+          rombar     = try(pci8.value.rombar, true)
         }
       }
     }
@@ -176,8 +176,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci9.value.host
-          pcie   = try(pci9.value.pcie, false)
-          rombar = try(pci9.value.rombar, true)
+          pcie       = try(pci9.value.pcie, false)
+          rombar     = try(pci9.value.rombar, true)
         }
       }
     }
@@ -186,8 +186,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci10.value.host
-          pcie   = try(pci10.value.pcie, false)
-          rombar = try(pci10.value.rombar, true)
+          pcie       = try(pci10.value.pcie, false)
+          rombar     = try(pci10.value.rombar, true)
         }
       }
     }
@@ -196,8 +196,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci11.value.host
-          pcie   = try(pci11.value.pcie, false)
-          rombar = try(pci11.value.rombar, true)
+          pcie       = try(pci11.value.pcie, false)
+          rombar     = try(pci11.value.rombar, true)
         }
       }
     }
@@ -206,8 +206,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci12.value.host
-          pcie   = try(pci12.value.pcie, false)
-          rombar = try(pci12.value.rombar, true)
+          pcie       = try(pci12.value.pcie, false)
+          rombar     = try(pci12.value.rombar, true)
         }
       }
     }
@@ -216,8 +216,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci13.value.host
-          pcie   = try(pci13.value.pcie, false)
-          rombar = try(pci13.value.rombar, true)
+          pcie       = try(pci13.value.pcie, false)
+          rombar     = try(pci13.value.rombar, true)
         }
       }
     }
@@ -226,8 +226,8 @@ resource "proxmox_vm_qemu" "vm" {
       content {
         mapping {
           mapping_id = pci14.value.host
-          pcie   = try(pci14.value.pcie, false)
-          rombar = try(pci14.value.rombar, true)
+          pcie       = try(pci14.value.pcie, false)
+          rombar     = try(pci14.value.rombar, true)
         }
       }
     }
