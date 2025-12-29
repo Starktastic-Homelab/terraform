@@ -115,8 +115,8 @@ variable "hostpci" {
   description = "PCI Passthrough Devices"
   type = list(object({
     host   = string
-    pcie   = number
-    rombar = number
+    pcie   = bool
+    rombar = bool
   }))
   default = []
 }
