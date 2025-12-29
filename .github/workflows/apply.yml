@@ -28,7 +28,11 @@ jobs:
           elif [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
             TITLE="${{ github.event.pull_request.title }}"
             BODY="${{ github.event.pull_request.body }}"
-            FULL_TEXT="$TITLE $BODY"
+            COMMIT_MSG=$(gh pr view ${{ github.event.pull_request.number }} \
+              --repo ${{ github.repository }} \
+              --json commits \
+              --jq '.commits[-1].messageHeadline + " " + .commits[-1].messageBody')
+            FULL_TEXT="$TITLE $BODY $COMMIT_MSG"
 
             # Patterns based on https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs
             if echo "$FULL_TEXT" | grep -iqE "\[(skip ci|ci skip|no ci|skip actions|actions skip)\]"; then
