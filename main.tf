@@ -68,7 +68,7 @@ module "worker_nodes" {
   os_disk_size      = var.os_disk_size
 
   pci_devices = [{
-    host   = "k3s_worker-gpus"
+    host   = "k3s-worker-gpus"
     pcie   = false
     rombar = false
   }]
