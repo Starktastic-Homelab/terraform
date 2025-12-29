@@ -84,8 +84,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci0" {
       for_each = length(var.pci_devices) > 0 ? [var.pci_devices[0]] : []
       content {
-        raw {
-          raw_id = pci0.value.host
+        mapping {
+          mapping_id = pci0.value.host
           pcie   = try(pci0.value.pcie, false)
           rombar = try(pci0.value.rombar, true)
         }
@@ -94,8 +94,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci1" {
       for_each = length(var.pci_devices) > 1 ? [var.pci_devices[1]] : []
       content {
-        raw {
-          raw_id = pci1.value.host
+        mapping {
+          mapping_id = pci1.value.host
           pcie   = try(pci1.value.pcie, false)
           rombar = try(pci1.value.rombar, true)
         }
@@ -104,8 +104,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci2" {
       for_each = length(var.pci_devices) > 2 ? [var.pci_devices[2]] : []
       content {
-        raw {
-          raw_id = pci2.value.host
+        mapping {
+          mapping_id = pci2.value.host
           pcie   = try(pci2.value.pcie, false)
           rombar = try(pci2.value.rombar, true)
         }
@@ -114,8 +114,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci3" {
       for_each = length(var.pci_devices) > 3 ? [var.pci_devices[3]] : []
       content {
-        raw {
-          raw_id = pci3.value.host
+        mapping {
+          mapping_id = pci3.value.host
           pcie   = try(pci3.value.pcie, false)
           rombar = try(pci3.value.rombar, true)
         }
@@ -124,8 +124,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci4" {
       for_each = length(var.pci_devices) > 4 ? [var.pci_devices[4]] : []
       content {
-        raw {
-          raw_id = pci4.value.host
+        mapping {
+          mapping_id = pci4.value.host
           pcie   = try(pci4.value.pcie, false)
           rombar = try(pci4.value.rombar, true)
         }
@@ -134,8 +134,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci5" {
       for_each = length(var.pci_devices) > 5 ? [var.pci_devices[5]] : []
       content {
-        raw {
-          raw_id = pci5.value.host
+        mapping {
+          mapping_id = pci5.value.host
           pcie   = try(pci5.value.pcie, false)
           rombar = try(pci5.value.rombar, true)
         }
@@ -144,8 +144,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci6" {
       for_each = length(var.pci_devices) > 6 ? [var.pci_devices[6]] : []
       content {
-        raw {
-          raw_id = pci6.value.host
+        mapping {
+          mapping_id = pci6.value.host
           pcie   = try(pci6.value.pcie, false)
           rombar = try(pci6.value.rombar, true)
         }
@@ -154,8 +154,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci7" {
       for_each = length(var.pci_devices) > 7 ? [var.pci_devices[7]] : []
       content {
-        raw {
-          raw_id = pci7.value.host
+        mapping {
+          mapping_id = pci7.value.host
           pcie   = try(pci7.value.pcie, false)
           rombar = try(pci7.value.rombar, true)
         }
@@ -164,8 +164,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci8" {
       for_each = length(var.pci_devices) > 8 ? [var.pci_devices[8]] : []
       content {
-        raw {
-          raw_id = pci8.value.host
+        mapping {
+          mapping_id = pci8.value.host
           pcie   = try(pci8.value.pcie, false)
           rombar = try(pci8.value.rombar, true)
         }
@@ -174,8 +174,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci9" {
       for_each = length(var.pci_devices) > 9 ? [var.pci_devices[9]] : []
       content {
-        raw {
-          raw_id = pci9.value.host
+        mapping {
+          mapping_id = pci9.value.host
           pcie   = try(pci9.value.pcie, false)
           rombar = try(pci9.value.rombar, true)
         }
@@ -184,8 +184,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci10" {
       for_each = length(var.pci_devices) > 10 ? [var.pci_devices[10]] : []
       content {
-        raw {
-          raw_id = pci10.value.host
+        mapping {
+          mapping_id = pci10.value.host
           pcie   = try(pci10.value.pcie, false)
           rombar = try(pci10.value.rombar, true)
         }
@@ -194,8 +194,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci11" {
       for_each = length(var.pci_devices) > 11 ? [var.pci_devices[11]] : []
       content {
-        raw {
-          raw_id = pci11.value.host
+        mapping {
+          mapping_id = pci11.value.host
           pcie   = try(pci11.value.pcie, false)
           rombar = try(pci11.value.rombar, true)
         }
@@ -204,8 +204,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci12" {
       for_each = length(var.pci_devices) > 12 ? [var.pci_devices[12]] : []
       content {
-        raw {
-          raw_id = pci12.value.host
+        mapping {
+          mapping_id = pci12.value.host
           pcie   = try(pci12.value.pcie, false)
           rombar = try(pci12.value.rombar, true)
         }
@@ -214,8 +214,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci13" {
       for_each = length(var.pci_devices) > 13 ? [var.pci_devices[13]] : []
       content {
-        raw {
-          raw_id = pci13.value.host
+        mapping {
+          mapping_id = pci13.value.host
           pcie   = try(pci13.value.pcie, false)
           rombar = try(pci13.value.rombar, true)
         }
@@ -224,8 +224,8 @@ resource "proxmox_vm_qemu" "vm" {
     dynamic "pci14" {
       for_each = length(var.pci_devices) > 14 ? [var.pci_devices[14]] : []
       content {
-        raw {
-          raw_id = pci14.value.host
+        mapping {
+          mapping_id = pci14.value.host
           pcie   = try(pci14.value.pcie, false)
           rombar = try(pci14.value.rombar, true)
         }
