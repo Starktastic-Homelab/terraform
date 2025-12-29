@@ -97,7 +97,7 @@ resource "proxmox_vm_qemu" "vm" {
         mapping {
           mapping_id = pci1.value.host
           pcie   = try(pci1.value.pcie, false)
-          rombar = try(pci1.value.rombar, true)
+          rombar = try(pci1.value.rombar, true) 
         }
       }
     }
