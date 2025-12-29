@@ -111,7 +111,7 @@ variable "nameserver" {
   description = "Default DNS nameserver"
 }
 
-variable "hostpci" {
+variable "pci_devices" {
   description = "PCI Passthrough Devices"
   type = list(object({
     host   = string

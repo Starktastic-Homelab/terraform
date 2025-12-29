@@ -79,13 +79,12 @@ resource "proxmox_vm_qemu" "vm" {
       }
     }
 
-    dynamic "pci" {
-      for_each = { for idx, device in var.hostpci : idx => device }
+    dynamic "hostpci" {
+      for_each = var.pci_devices
       content {
-        id          = tostring(pci.key)
-        raw_id      = pci.value.host
-        pcie        = pci.value.pcie
-        rombar      = pci.value.rombar
+        host   = hostpci.value.host  
+        rombar = try(hostpci.value.rombar, 1)
+        pcie   = try(hostpci.value.pcie, 0)
       }
     }
   }
