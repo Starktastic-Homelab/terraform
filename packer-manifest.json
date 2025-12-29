@@ -3,15 +3,15 @@
     {
       "name": "debian-13",
       "builder_type": "proxmox-iso",
-      "build_time": 1766596278,
+      "build_time": 1766998261,
       "files": null,
       "artifact_id": "900",
-      "packer_run_uuid": "825c4885-e1af-7c95-d739-e77d70304395",
+      "packer_run_uuid": "8671f1b4-bc45-c610-bf35-0584a710adeb",
       "custom_data": {
-        "git_tag": "v13.2.0.20251224170634",
-        "vm_name": "packer-debian-13.2.0-20251224170634"
+        "git_tag": "v13.2.0.20251229084615",
+        "vm_name": "packer-debian-13.2.0-20251229084615"
       }
     }
   ],
-  "last_run_uuid": "825c4885-e1af-7c95-d739-e77d70304395"
+  "last_run_uuid": "8671f1b4-bc45-c610-bf35-0584a710adeb"
 }
