@@ -98,3 +98,13 @@ variable "nameserver" {
   type        = string
   description = "Default DNS nameserver"
 }
+
+variable "hostpci" {
+  description = "PCI Passthrough Devices"
+  type = list(object({
+    host   = string
+    pcie   = number
+    rombar = number
+  }))
+  default = []
+}

@@ -76,6 +76,15 @@ resource "proxmox_vm_qemu" "vm" {
         }
       }
     }
+
+    dynamic "hostpci" {
+      for_each = var.hostpci
+      content {
+        host   = hostpci.value.host
+        pcie   = hostpci.value.pcie
+        rombar = hostpci.value.rombar
+      }
+    }
   }
 
   tags = var.tags

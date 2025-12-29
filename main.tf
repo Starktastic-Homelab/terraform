@@ -67,5 +67,11 @@ module "worker_nodes" {
   os_storage        = var.os_storage
   os_disk_size      = var.os_disk_size
 
+  hostpci = [{
+    host   = "${var.igpu_base_id}.${count.index + 1}"
+    pcie   = 0
+    rombar = 0
+  }]
+
   tags = "k3s,worker"
 }
