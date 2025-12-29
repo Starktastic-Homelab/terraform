@@ -231,16 +231,6 @@ resource "proxmox_vm_qemu" "vm" {
         }
       }
     }
-    dynamic "pci15" {
-      for_each = length(var.pci_devices) > 15 ? [var.pci_devices[15]] : []
-      content {
-        raw {
-          raw_id = pci15.value.host
-          pcie   = try(pci15.value.pcie, false)
-          rombar = try(pci15.value.rombar, true)
-        }
-      }
-    }
   }
 
   tags = var.tags
