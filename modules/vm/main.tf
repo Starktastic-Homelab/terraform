@@ -14,6 +14,8 @@ resource "proxmox_vm_qemu" "vm" {
   boot               = "order=virtio0"
   start_at_node_boot = true
   agent              = 1
+  machine     = var.machine
+  bios        = var.bios
 
   cpu {
     sockets = 1
@@ -77,12 +79,13 @@ resource "proxmox_vm_qemu" "vm" {
       }
     }
 
-    dynamic "hostpci" {
-      for_each = var.hostpci
+    dynamic "pci" {
+      for_each = { for idx, device in var.hostpci : idx => device }
       content {
-        host   = hostpci.value.host
-        pcie   = hostpci.value.pcie
-        rombar = hostpci.value.rombar
+        id          = tostring(pci.key)
+        raw_id      = pci.value.host
+        pcie        = pci.value.pcie
+        rombar      = pci.value.rombar
       }
     }
   }

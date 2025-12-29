@@ -69,8 +69,8 @@ module "worker_nodes" {
 
   hostpci = [{
     host   = "${var.igpu_base_id}.${count.index + 1}"
-    pcie   = 0
-    rombar = 0
+    pcie   = false
+    rombar = false
   }]
 
   tags = "k3s,worker"
