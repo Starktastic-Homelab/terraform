@@ -18,6 +18,8 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           SHOULD_RUN="false"
 
