@@ -12,12 +12,43 @@ on:
   workflow_dispatch:
 
 jobs:
+  check-conditions:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        run: |
+          SHOULD_RUN="false"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "✅ Manual dispatch detected."
+            SHOULD_RUN="true"
+
+          elif [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            TITLE="${{ github.event.pull_request.title }}"
+            BODY="${{ github.event.pull_request.body }}"
+            FULL_TEXT="$TITLE $BODY"
+
+            # Patterns based on https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs
+            if echo "$FULL_TEXT" | grep -iqE "\[(skip ci|ci skip|no ci|skip actions|actions skip)\]"; then
+              echo "⛔ Skip pattern detected in PR title or body."
+              SHOULD_RUN="false"
+            else
+              echo "✅ PR Merged and no skip patterns found."
+              SHOULD_RUN="true"
+            fi
+          fi
+
+          echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
+
   download-from-min-io:
     name: Download Terraform plan and exitcode from MinIO
+    needs: check-conditions
+    if: needs.check-conditions.outputs.should_run == 'true' && github.event_name == 'pull_request_target'
     runs-on: self-hosted
     container:
       image: amazon/aws-cli:latest
-    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
     steps:
       - name: Download Terraform plan and exitcode from MinIO
         uses: ./.github/actions/s3-cp
@@ -41,15 +72,12 @@ jobs:
 
   apply:
     name: Terraform apply
-    runs-on: self-hosted
+    needs: [check-conditions, download-from-min-io]
     if: |
-      !cancelled() && (
-        github.event_name == 'workflow_dispatch' ||
-        github.event.pull_request.merged == true
-      )
+      !cancelled() && needs.check-conditions.outputs.should_run == 'true'
+    runs-on: self-hosted
     container:
       image: hashicorp/terraform:latest
-    needs: download-from-min-io
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -69,12 +97,10 @@ jobs:
       - name: Check for changes
         id: check
         run: |
-          # Default to true for manual dispatch
           HAS_CHANGES="true"
           
           if [[ -f "plan.exitcode" ]]; then
             CODE=$(cat plan.exitcode)
-            # Code 2 means changes present. Code 0 means no changes.
             if [[ "$CODE" == "2" ]]; then
               HAS_CHANGES="true"
               echo "⚠️ Changes detected (Exit Code 2)."
@@ -122,8 +148,8 @@ jobs:
       AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
     container:
       image: amazon/aws-cli:latest
-    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && always()
-    needs: apply
+    if: always() && needs.check-conditions.outputs.should_run == 'true' && github.event_name == 'pull_request_target'
+    needs: [check-conditions, apply]
     steps:
       - name: Remove Terraform plan & exitcode files from MinIO
         run: aws --no-verify-ssl s3 rm s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }} --recursive --quiet

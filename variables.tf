@@ -84,3 +84,7 @@ variable "nameserver" {
 variable "ssh_pub_key" {
   type = string
 }
+
+variable "igpu_base_id" {
+  default = "0000:00:02"
+}

@@ -18,6 +18,18 @@ variable "clone" {
   description = "Name of the base VM/template to clone"
 }
 
+variable "machine" {
+  type        = string
+  description = "VM machine type (e.g., 'q35')"
+  default     = "q35"
+}
+
+variable "bios" {
+  type        = string
+  description = "BIOS type (e.g., 'seabios')"
+  default     = "seabios"
+}
+
 variable "scsihw" {
   type        = string
   description = "SCSI controller type (e.g., 'virtio-scsi-pci')"
@@ -97,4 +109,14 @@ variable "ipconfigs" {
 variable "nameserver" {
   type        = string
   description = "Default DNS nameserver"
+}
+
+variable "pci_devices" {
+  description = "PCI Passthrough Devices"
+  type = list(object({
+    host   = string
+    pcie   = bool
+    rombar = bool
+  }))
+  default = []
 }
