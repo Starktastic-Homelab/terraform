@@ -70,11 +70,14 @@ jobs:
   report:
     name: Report drift
     needs: check
-    if: needs.check.outputs.drift_detected == 'true'
+    if: always() && needs.check.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Download log
         uses: actions/download-artifact@v7
         with:
@@ -82,28 +85,40 @@ jobs:
 
       - name: Create issue
         env:
+          DRIFT_DETECTED: ${{ needs.check.outputs.drift_detected }}
           GH_TOKEN: ${{ github.token }}
         run: |
           EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
 
-          if [ -z "$EXISTING_ISSUE" ]; then
-            gh issue create \
-              --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
-              --body "Infrastructure drift was detected during the scheduled check.
+          if [ "$DRIFT_DETECTED" == "true" ]; then
+            if [ -z "$EXISTING_ISSUE" ]; then
+              gh issue create \
+                --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
+                --body "Infrastructure drift was detected during the scheduled check.
 
-              <details><summary>Plan Output</summary>
+                <details><summary>Plan Output</summary>
 
-              \`\`\`hcl
-              $(base64 -d drift.log.b64)
-              \`\`\`
+                \`\`\`hcl
+                $(base64 -d drift.log.b64)
+                \`\`\`
 
-              </details>
+                </details>
 
-              Please review and either:
-              1. Apply the changes (if the drift is valid updates made externally).
-              2. Revert the external changes (if this was accidental).
-              " \
-              --label "drift"
+                Please review and either:
+                1. Apply the changes (if the drift is valid updates made externally).
+                2. Revert the external changes (if this was accidental).
+                " \
+                --label "drift"
+            else
+              echo "Drift issue #$EXISTING_ISSUE already exists. Updating..."
+              gh issue comment "$EXISTING_ISSUE" --body "⚠️ **Drift persists** as of $(date +'%Y-%m-%d'). See latest run artifacts."
+            fi
           else
-            echo "Drift issue #$EXISTING_ISSUE already exists. Skipping creation."
+            if [ -n "$EXISTING_ISSUE" ]; then
+              echo "Drift resolved. Closing issue #$EXISTING_ISSUE..."
+              gh issue comment "$EXISTING_ISSUE" --body "✅ **Resolved:** No drift detected in the latest run. Closing issue."
+              gh issue close "$EXISTING_ISSUE"
+            else
+              echo "System clean and no open issues. Nothing to do."
+            fi
           fi
