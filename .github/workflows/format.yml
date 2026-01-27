@@ -1,16 +1,13 @@
-name: Format Terraform Files
+name: Format
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '**.tf'
+  pull_request:
+    branches: [main]
 
 jobs:
   format:
-    name: Format Terraform files
+    name: Format Terraform, YAML and JSON files
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -24,19 +21,15 @@ jobs:
           terraform_wrapper: false
 
       - name: Run Terraform fmt command
-        id: fmt
-        run: |
-          CHANGED_FILES=$(terraform fmt -recursive .)
-          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      
-      - name: Commit & push formatting changes
-        if: steps.fmt.outputs.changed_files != ''
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+        run: terraform fmt -recursive .
 
-          git add .
-          git commit -m "[skip ci] style: terraform fmt"
-          git push
+      - name: Prettier
+        uses: creyD/prettier_action@v4.6
+        with:
+          prettier_options: --write **/*.{yaml,yml,json}
+          no_commit: true
+      
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        with:
+          commit_message: "style: apply automatic formatting"
