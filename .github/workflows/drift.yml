@@ -84,6 +84,15 @@ jobs:
         with:
           name: drift-log
 
+      - name: Decode log file
+        if: needs.check.outputs.drift_detected == 'true'
+        run: |
+          base64 -d drift.log.b64 > drift.log
+          DRIFT=$(cat drift.log)
+          echo "DRIFT<<EOF" >> $GITHUB_ENV
+          echo "$DRIFT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Create issue
         env:
           DRIFT_DETECTED: ${{ needs.check.outputs.drift_detected }}
@@ -94,7 +103,6 @@ jobs:
 
           if [ "$DRIFT_DETECTED" == "true" ]; then
             if [ -z "$EXISTING_ISSUE" ]; then
-              LOG_CONTENT=$(base64 -d drift.log.b64)
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
                 --body "Infrastructure drift was detected during the scheduled check.
@@ -102,7 +110,7 @@ jobs:
                 <details><summary>Plan Output</summary>
 
                 ```HCL
-                $LOG_CONTENT
+                ${{ env.DRIFT }}
                 ```
 
                 </details>

@@ -115,7 +115,7 @@ jobs:
         with:
           name: planlog
 
-      - name: Terraform decode plan log
+      - name: Decode plan log
         run: |
           base64 -d plan.log.b64 > plan.log
           PLAN=$(cat plan.log)
