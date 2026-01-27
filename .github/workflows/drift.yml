@@ -59,6 +59,25 @@ jobs:
 
           base64 drift.log > drift.log.b64
 
+      - name: Publish job summary
+        if: always()
+        run: |
+          echo "### 🌍 Terraform Status" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.plan.outputs.drift }}" == "true" ]; then
+             echo "⚠️ **Drift detected**" >> $GITHUB_STEP_SUMMARY
+          else
+             echo "✅ **Infrastructure matches configuration**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Show Plan Output</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`hcl" >> $GITHUB_STEP_SUMMARY
+          cat drift.log 2>/dev/null || echo "No log found." >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
       - name: Upload drift log
         if: steps.plan.outputs.drift == 'true'
         uses: actions/upload-artifact@v6
