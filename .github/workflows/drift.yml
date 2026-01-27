@@ -103,7 +103,7 @@ jobs:
         with:
           name: drift-log
 
-      - name: Decode drift log
+      - name: Decode drift log and create issue body
         if: needs.check.outputs.drift_detected == 'true'
         run: |
           cat <<EOF > issue_body.md
