@@ -137,7 +137,7 @@ jobs:
                 --body-file issue_body.md --label 'drift'
             else
               echo "Drift issue #$EXISTING_ISSUE already exists. Updating..."
-              gh issue comment "$EXISTING_ISSUE" --body "⚠️ **Drift persists** as of $(date +'%Y-%m-%d'). See latest run artifacts."
+              gh issue comment "$EXISTING_ISSUE" --body "⚠️ **Drift persists** as of $(date +'%Y-%m-%d'). [See latest run artifacts]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
             fi
           else
             if [ -n "$EXISTING_ISSUE" ]; then
