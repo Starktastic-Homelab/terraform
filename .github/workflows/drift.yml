@@ -89,6 +89,7 @@ jobs:
           DRIFT_DETECTED: ${{ needs.check.outputs.drift_detected }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh label create "drift" --color "d73a4a" --description "Infrastructure drift detected" || true
           EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
 
           if [ "$DRIFT_DETECTED" == "true" ]; then
