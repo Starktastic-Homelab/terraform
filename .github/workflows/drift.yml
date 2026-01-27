@@ -103,6 +103,14 @@ jobs:
         with:
           name: drift-log
 
+      - name: Decode drift log
+        run: |
+          base64 -d drift.log.b64 > drift.log
+          DRIFT=$(cat drift.log)
+          echo "DRIFT<<EOF" >> $GITHUB_ENV
+          echo "$DRIFT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Create issue
         env:
           DRIFT_DETECTED: ${{ needs.check.outputs.drift_detected }}
@@ -112,8 +120,6 @@ jobs:
           EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
 
           if [ "$DRIFT_DETECTED" == "true" ]; then
-            export DRIFT=$(base64 -d drift.log.b64)
-
             if [ -z "$EXISTING_ISSUE" ]; then
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
