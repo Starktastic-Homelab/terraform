@@ -1,0 +1,107 @@
+name: Drift detection
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Check for drift
+    runs-on: self-hosted
+    timeout-minutes: 15
+    container:
+      image: hashicorp/terraform:latest
+    env:
+      PM_API_URL: ${{ secrets.PM_API_URL }}
+      PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
+      PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+    outputs:
+      drift_detected: ${{ steps.plan.outputs.drift }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read manifest file
+        run: |
+          echo 'manifest<<EOF' >> $GITHUB_ENV
+          cat packer-manifest.json >> $GITHUB_ENV
+          echo -e '\nEOF' >> $GITHUB_ENV
+
+      - name: Init
+        run: terraform init
+
+      - name: Check for drift
+        id: plan
+        env:
+          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
+          TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
+        run: |
+          set +e
+          # -detailed-exitcode: 0=Succeeded, 1=Error, 2=Succeeded with diff (drift)
+          terraform plan -detailed-exitcode -no-color -out=tfplan > drift.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 2 ]; then
+            echo "⚠️ Drift detected!"
+            echo "drift=true" >> $GITHUB_OUTPUT
+          elif [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ No drift."
+            echo "drift=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Terraform error"
+            exit 1
+          fi
+
+      - name: Upload drift log
+        if: steps.plan.outputs.drift == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: drift-log
+          path: drift.log
+          retention-days: 1
+
+  report:
+    name: Report drift
+    needs: check
+    if: needs.check.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Download log
+        uses: actions/download-artifact@v7
+        with:
+          name: drift-log
+
+      - name: Create issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
+
+          if [ -z "$EXISTING_ISSUE" ]; then
+            gh issue create \
+              --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
+              --body "Infrastructure drift was detected during the scheduled check.
+
+              <details><summary>Plan Output</summary>
+
+              \`\`\`hcl
+              $(cat drift.log)
+              \`\`\`
+
+              </details>
+
+              Please review and either:
+              1. Apply the changes (if the drift is valid updates made externally).
+              2. Revert the external changes (if this was accidental).
+              " \
+              --label "drift"
+          else
+            echo "Drift issue #$EXISTING_ISSUE already exists. Skipping creation."
+          fi
