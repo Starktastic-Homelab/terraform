@@ -70,13 +70,13 @@ jobs:
              echo "✅ **Infrastructure matches configuration**" >> $GITHUB_STEP_SUMMARY
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "<details><summary>Show Plan Output</summary>" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`hcl" >> $GITHUB_STEP_SUMMARY
-          cat drift.log 2>/dev/null || echo "No log found." >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "</details>" >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '<details><summary>Show Plan Output</summary>' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```HCL' >> $GITHUB_STEP_SUMMARY
+          cat drift.log 2>/dev/null || echo 'No log found.' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo '</details>' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload drift log
         if: steps.plan.outputs.drift == 'true'
@@ -112,12 +112,12 @@ jobs:
           EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
 
           if [ "$DRIFT_DETECTED" == "true" ]; then
-            DRIFT=$(base64 -d drift.log.b64)
+            export DRIFT=$(base64 -d drift.log.b64)
 
             if [ -z "$EXISTING_ISSUE" ]; then
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
-                --body "Infrastructure drift was detected during the scheduled check.
+                --body 'Infrastructure drift was detected during the scheduled check.
 
                 <details><summary>Plan Output</summary>
 
@@ -130,8 +130,8 @@ jobs:
                 Please review and either:
                 1. Apply the changes (if the drift is valid updates made externally).
                 2. Revert the external changes (if this was accidental).
-                " \
-                --label "drift"
+                ' \
+                --label 'drift'
             else
               echo "Drift issue #$EXISTING_ISSUE already exists. Updating..."
               gh issue comment "$EXISTING_ISSUE" --body "⚠️ **Drift persists** as of $(date +'%Y-%m-%d'). See latest run artifacts."
