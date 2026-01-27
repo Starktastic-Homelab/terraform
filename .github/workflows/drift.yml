@@ -79,6 +79,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download log
+        if: needs.check.outputs.drift_detected == 'true'
         uses: actions/download-artifact@v7
         with:
           name: drift-log
