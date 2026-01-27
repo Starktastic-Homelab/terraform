@@ -104,6 +104,7 @@ jobs:
           name: drift-log
 
       - name: Decode drift log
+        if: needs.check.outputs.drift_detected == 'true'
         run: |
           base64 -d drift.log.b64 > drift.log
           DRIFT=$(cat drift.log)
