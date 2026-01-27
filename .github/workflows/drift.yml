@@ -42,7 +42,7 @@ jobs:
         run: |
           set +e
           # -detailed-exitcode: 0=Succeeded, 1=Error, 2=Succeeded with diff (drift)
-          terraform plan -detailed-exitcode -no-color -out=tfplan > drift.log
+          terraform plan -detailed-exitcode -no-color > drift.log
           EXIT_CODE=$?
           set -e
 
@@ -103,15 +103,6 @@ jobs:
         with:
           name: drift-log
 
-      - name: Decode log file
-        if: needs.check.outputs.drift_detected == 'true'
-        run: |
-          base64 -d drift.log.b64 > drift.log
-          DRIFT=$(cat drift.log)
-          echo "DRIFT<<EOF" >> $GITHUB_ENV
-          echo "$DRIFT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
       - name: Create issue
         env:
           DRIFT_DETECTED: ${{ needs.check.outputs.drift_detected }}
@@ -121,6 +112,8 @@ jobs:
           EXISTING_ISSUE=$(gh issue list --state open --label "drift" --json number --jq '.[0].number')
 
           if [ "$DRIFT_DETECTED" == "true" ]; then
+            DRIFT=$(base64 -d drift.log.b64)
+
             if [ -z "$EXISTING_ISSUE" ]; then
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
@@ -129,7 +122,7 @@ jobs:
                 <details><summary>Plan Output</summary>
 
                 ```HCL
-                ${{ env.DRIFT }}
+                $DRIFT
                 ```
 
                 </details>
