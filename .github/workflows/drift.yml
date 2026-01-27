@@ -106,11 +106,21 @@ jobs:
       - name: Decode drift log
         if: needs.check.outputs.drift_detected == 'true'
         run: |
-          base64 -d drift.log.b64 > drift.log
-          DRIFT=$(cat drift.log)
-          echo "DRIFT<<EOF" >> $GITHUB_ENV
-          echo "$DRIFT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          cat <<EOF > issue_body.md
+          Infrastructure drift was detected during the scheduled check.
+
+          <details><summary>Plan Output</summary>
+
+          \`\`\`HCL
+          $(base64 -d drift.log.b64)
+          \`\`\`
+
+          </details>
+
+          Please review and either:
+          1. Apply the changes (if the drift is valid updates made externally).
+          2. Revert the external changes (if this was accidental).
+          EOF
 
       - name: Create issue
         env:
@@ -124,21 +134,7 @@ jobs:
             if [ -z "$EXISTING_ISSUE" ]; then
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
-                --body "Infrastructure drift was detected during the scheduled check.
-
-                <details><summary>Plan Output</summary>
-
-                \`\`\`HCL
-                ${{ env.DRIFT }}
-                \`\`\`
-
-                </details>
-
-                Please review and either:
-                1. Apply the changes (if the drift is valid updates made externally).
-                2. Revert the external changes (if this was accidental).
-                " \
-                --label 'drift'
+                --body-file issue_body.md --label 'drift'
             else
               echo "Drift issue #$EXISTING_ISSUE already exists. Updating..."
               gh issue comment "$EXISTING_ISSUE" --body "⚠️ **Drift persists** as of $(date +'%Y-%m-%d'). See latest run artifacts."
