@@ -73,9 +73,9 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '<details><summary>Show Plan Output</summary>' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
-          echo '```HCL' >> $GITHUB_STEP_SUMMARY
+          #echo '```HCL' >> $GITHUB_STEP_SUMMARY
           cat drift.log 2>/dev/null || echo 'No log found.' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          #echo '```' >> $GITHUB_STEP_SUMMARY
           echo '</details>' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload drift log
