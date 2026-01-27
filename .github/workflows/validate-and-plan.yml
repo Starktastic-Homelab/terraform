@@ -123,19 +123,21 @@ jobs:
           echo "$PLAN" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Comment on Pull Request
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body '''
-          ## Terraform Plan 📖
-          <details>
-          <summary>Click to expand</summary>
+      - name: Post comment
+        uses: marocchino/sticky-pull-request-comment@v2.9.4
+        with:
+          header: terraform-plan
+          message: |
+            '''
+            ## Terraform Plan 📖
+            <details>
+            <summary>Click to expand</summary>
 
-          ```HCL
-          ${{ env.PLAN }}
-          ```
+            ```HCL
+            ${{ env.PLAN }}
+            ```
 
-          </details>
+            </details>
 
-          *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`*'''
+            *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`*
+            '''
