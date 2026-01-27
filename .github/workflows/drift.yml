@@ -128,9 +128,9 @@ jobs:
 
                 <details><summary>Plan Output</summary>
 
-                ```HCL
+                \`\`\`HCL
                 ${{ env.DRIFT }}
-                ```
+                \`\`\`
 
                 </details>
 
