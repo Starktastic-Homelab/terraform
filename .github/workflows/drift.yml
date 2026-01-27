@@ -57,12 +57,14 @@ jobs:
             exit 1
           fi
 
+          base64 drift.log > drift.log.b64
+
       - name: Upload drift log
         if: steps.plan.outputs.drift == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: drift-log
-          path: drift.log
+          path: drift.log.b64
           retention-days: 1
 
   report:
@@ -92,7 +94,7 @@ jobs:
               <details><summary>Plan Output</summary>
 
               \`\`\`hcl
-              $(cat drift.log)
+              $(base64 -d drift.log.b64)
               \`\`\`
 
               </details>
