@@ -124,7 +124,7 @@ jobs:
             if [ -z "$EXISTING_ISSUE" ]; then
               gh issue create \
                 --title "⚠️ Terraform drift detected: $(date +'%Y-%m-%d')" \
-                --body 'Infrastructure drift was detected during the scheduled check.
+                --body '''Infrastructure drift was detected during the scheduled check.
 
                 <details><summary>Plan Output</summary>
 
@@ -137,7 +137,7 @@ jobs:
                 Please review and either:
                 1. Apply the changes (if the drift is valid updates made externally).
                 2. Revert the external changes (if this was accidental).
-                ' \
+                ''' \
                 --label 'drift'
             else
               echo "Drift issue #$EXISTING_ISSUE already exists. Updating..."
