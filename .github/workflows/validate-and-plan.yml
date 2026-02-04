@@ -83,11 +83,6 @@ jobs:
     container:
       image: amazon/aws-cli:latest
     steps:
-      - name: Checkout repository (for local action)
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: .github/actions
-
       - name: Download Terraform plan artifact
         uses: actions/download-artifact@v7
         with:
