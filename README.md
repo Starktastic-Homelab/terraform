@@ -251,8 +251,6 @@ Terraform state is stored in MinIO using an S3-compatible backend:
 - **Bucket**: `terraform-state`
 - **Key**: `terraform.tfstate`
 
-> **Note**: MinIO doesn't support native state locking. Concurrent applies are prevented via GitHub Actions concurrency groups.
-
 ## Related Repositories
 
 - [homelab-packer](https://github.com/Starktastic-Homelab/packer) — Builds the base VM template

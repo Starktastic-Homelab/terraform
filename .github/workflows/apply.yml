@@ -11,11 +11,6 @@ on:
       - 'renovate.json'
   workflow_dispatch:
 
-# Prevent concurrent applies - MinIO S3 backend doesn't support state locking
-concurrency:
-  group: terraform-apply
-  cancel-in-progress: false
-
 jobs:
   check-conditions:
     runs-on: ubuntu-latest
