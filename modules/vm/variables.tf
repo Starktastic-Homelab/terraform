@@ -48,8 +48,9 @@ variable "ciuser" {
 
 variable "cipassword" {
   type        = string
-  description = "Username for cloud-init"
+  description = "Password for cloud-init user (optional)"
   default     = null
+  sensitive   = true
 }
 
 variable "sshkeys" {
