@@ -1,183 +1,192 @@
 # Homelab Terraform
 
+[![Validate & Plan](https://github.com/starktastic/homelab-terraform/actions/workflows/validate-and-plan.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/validate-and-plan.yml)
+[![Apply](https://github.com/starktastic/homelab-terraform/actions/workflows/apply.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/apply.yml)
+[![Drift Detection](https://github.com/starktastic/homelab-terraform/actions/workflows/drift.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/drift.yml)
+![Terraform](https://img.shields.io/badge/Terraform-1.5+-844FBA?logo=terraform)
+![Proxmox](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox)
+
 Terraform configuration for provisioning a K3s Kubernetes cluster on Proxmox VE. This project creates master and worker VMs using a Packer-built template and integrates with GitHub Actions for GitOps-style infrastructure management.
+
+## Overview
+
+This repository provisions the virtual machine infrastructure for the homelab Kubernetes cluster. It consumes VM templates from [homelab-packer](https://github.com/starktastic/homelab-packer) and triggers [homelab-ansible](https://github.com/starktastic/homelab-ansible) for K3s installation upon successful apply.
+
+```mermaid
+flowchart TB
+    subgraph GH["GitHub Actions"]
+        PR[Pull Request] --> Plan[Terraform Plan]
+        Plan --> MinIO[(MinIO Storage)]
+        Plan --> Comment[PR Comment]
+        Merge[Merge to Main] --> Apply[Terraform Apply]
+        Apply --> Dispatch[Repository Dispatch]
+    end
+    
+    subgraph Proxmox["Proxmox VE"]
+        Master["kube-master-01<br/>2 cores | 4GB"]
+        Worker1["kube-worker-01<br/>6 cores | 24GB | GPU"]
+        Worker2["kube-worker-02<br/>6 cores | 24GB | GPU"]
+    end
+    
+    MinIO --> Apply
+    Apply --> Proxmox
+    Dispatch --> Ansible[homelab-ansible]
+    
+    style GH fill:#2d3748,stroke:#4299e1
+    style Proxmox fill:#2d3748,stroke:#e57000
+```
+
+## Features
+
+- 🔄 **GitOps Pipeline** - Plan on PR, review, apply on merge
+- 📦 **Packer Integration** - Automatically uses latest template from manifest
+- 🌐 **Dual-NIC Networking** - Management (vmbr0) and services (vmbr1) networks
+- 🎮 **GPU Passthrough** - Intel SR-IOV PCI mapping for worker nodes
+- 🔍 **Drift Detection** - Scheduled checks with GitHub issue creation
+- 📊 **State in MinIO** - S3-compatible backend for state and plan storage
+- ⚡ **Smart Triggers** - Only triggers Ansible when changes are applied
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              GitHub Actions                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
-│  │   Validate   │───▶│     Plan     │───▶│    Apply     │                   │
-│  │   & Plan     │    │  (to MinIO)  │    │  (on merge)  │                   │
-│  └──────────────┘    └──────────────┘    └──────────────┘                   │
-│                                                 │                            │
-│                                                 ▼                            │
-│                                          ┌──────────────┐                   │
-│                                          │   Trigger    │                   │
-│                                          │   Ansible    │                   │
-│                                          └──────────────┘                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Proxmox VE                                      │
-│                                                                              │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                         K3s Cluster                                    │ │
-│  │                                                                        │ │
-│  │  ┌─────────────────┐                                                   │ │
-│  │  │  Master Node    │  Control plane (etcd, API server, scheduler)     │ │
-│  │  │  kube-master-01 │                                                   │ │
-│  │  └─────────────────┘                                                   │ │
-│  │                                                                        │ │
-│  │  ┌─────────────────┐  ┌─────────────────┐                              │ │
-│  │  │  Worker Node    │  │  Worker Node    │  Workloads + GPU passthrough │ │
-│  │  │  kube-worker-01 │  │  kube-worker-02 │                              │ │
-│  │  └─────────────────┘  └─────────────────┘                              │ │
-│  │                                                                        │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-│  ┌──────────────┐  ┌──────────────┐                                         │
-│  │    vmbr0     │  │    vmbr1     │  Network bridges                        │
-│  │  10.9.9.0/24 │  │  10.9.8.0/24 │                                         │
-│  └──────────────┘  └──────────────┘                                         │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Network["Network Architecture"]
+        subgraph VMBR0["vmbr0 - Management<br/>10.9.9.0/24"]
+            M1_ETH0["Master: 10.9.9.50"]
+            W1_ETH0["Worker 1: 10.9.9.51"]
+            W2_ETH0["Worker 2: 10.9.9.52"]
+        end
+        
+        subgraph VMBR1["vmbr1 - Services<br/>10.9.8.0/24"]
+            M1_ETH1["Master: 10.9.8.50"]
+            W1_ETH1["Worker 1: 10.9.8.51"]
+            W2_ETH1["Worker 2: 10.9.8.52"]
+        end
+        
+        Gateway["Gateway<br/>10.9.9.1"]
+    end
+    
+    Gateway --> VMBR0
+    
+    style VMBR0 fill:#4299e1,stroke:#2b6cb0
+    style VMBR1 fill:#48bb78,stroke:#276749
 ```
 
-## Key Features
+### Cluster Topology
 
-- **Automated GitOps Pipeline:**
-  - **Plan:** On PR, Terraform generates a plan and uploads the binary + exit code to MinIO (S3).
-  - **Review:** The plan summary is posted as a comment on the Pull Request.
-  - **Apply:** On merge, the specific plan artifact is downloaded and applied.
-  - **Smart Trigger:** Ansible is only triggered if the Terraform plan exit code indicated actual changes (`2`).
-- **Dynamic Inventory:** Automatically calculates static IPs for Master and Worker nodes based on CIDR blocks and offsets.
-- **Packer Integration:** Automatically parses `packer-manifest.json` to deploy the latest available template version.
-- **Drift Detection:** Scheduled workflow detects infrastructure drift and creates GitHub issues.
+| Node | Role | Cores | RAM | GPU | Management IP | Services IP |
+|------|------|-------|-----|-----|---------------|-------------|
+| kube-master-01 | Control Plane | 2 | 4GB | - | 10.9.9.50 | 10.9.8.50 |
+| kube-worker-01 | Worker | 6 | 24GB | ✅ | 10.9.9.51 | 10.9.8.51 |
+| kube-worker-02 | Worker | 6 | 24GB | ✅ | 10.9.9.52 | 10.9.8.52 |
 
 ## Repository Structure
 
 ```
-.
-├── main.tf                 # Root module: master and worker node definitions
+homelab-terraform/
+├── main.tf                 # Master and worker node definitions
 ├── outputs.tf              # Cluster outputs (node IPs, VM IDs)
-├── providers.tf            # Terraform and Proxmox provider configuration
+├── providers.tf            # Terraform and Proxmox provider config
 ├── variables.tf            # Input variable definitions
 ├── terraform.tfvars        # Default variable values
 ├── packer-manifest.json    # Packer build manifest (auto-updated)
-├── modules/
-│   └── vm/                 # Reusable VM module
-│       ├── main.tf         # VM resource definition
-│       ├── outputs.tf      # VM outputs
-│       └── variables.tf    # VM input variables
-└── .github/
-    ├── actions/
-    │   └── s3-cp/          # Composite action for S3 operations
-    └── workflows/
-        ├── validate-and-plan.yml  # PR validation and planning
-        ├── apply.yml              # Apply on merge
-        ├── destroy.yml            # Manual destroy (use with caution!)
-        ├── drift.yml              # Drift detection
-        └── format.yml             # Auto-format on PR
+└── modules/
+    └── vm/                 # Reusable VM module
+        ├── main.tf         # VM resource definition
+        ├── outputs.tf      # VM outputs
+        ├── providers.tf    # Module provider requirements
+        └── variables.tf    # VM input variables
 ```
 
 ## Prerequisites
 
-- **Proxmox VE** cluster with API access configured
-- **Packer template** built via [homelab-packer](https://github.com/Starktastic-Homelab/packer) (creates `packer-manifest.json`)
-- **MinIO** (or S3-compatible storage) for Terraform state and plan artifacts
-- **GitHub Actions runner** (self-hosted) with access to Proxmox and MinIO
+- [Terraform](https://www.terraform.io/) >= 1.5
+- [Proxmox VE](https://www.proxmox.com/) >= 8.0 with API access
+- [MinIO](https://min.io/) or S3-compatible storage for state
+- Packer template built via [homelab-packer](https://github.com/starktastic/homelab-packer)
 
 ## Configuration
 
-### Required Secrets (GitHub)
+### Variables
 
-| Secret                 | Description                                          |
-| ---------------------- | ---------------------------------------------------- |
-| `MINIO_ACCESS_KEY`     | MinIO access key for state storage                   |
-| `MINIO_SECRET_KEY`     | MinIO secret key for state storage                   |
-| `MINIO_ENDPOINT`       | MinIO endpoint URL (e.g., `https://minio.local`)     |
-| `MINIO_TF_PLAN_BUCKET` | Bucket name for storing Terraform plans              |
-| `PM_API_URL`           | Proxmox API URL (e.g., `https://pve:8006/api2/json`) |
-| `PM_API_TOKEN_ID`      | Proxmox API token ID                                 |
-| `PM_API_TOKEN_SECRET`  | Proxmox API token secret                             |
-| `ORG_DISPATCH_TOKEN`   | GitHub PAT for triggering Ansible workflow           |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `master_count` | Number of master nodes | `1` |
+| `master_cores` | CPU cores per master | `2` |
+| `master_memory` | RAM per master (MB) | `4096` |
+| `worker_count` | Number of worker nodes | `2` |
+| `worker_cores` | CPU cores per worker | `6` |
+| `worker_memory` | RAM per worker (MB) | `24576` |
+| `network_interfaces` | Network configuration list | See below |
+| `worker_pci_mapping` | GPU PCI passthrough mapping | `k3s-worker-gpus` |
 
-### Required Variables (GitHub)
-
-| Variable             | Description                  |
-| -------------------- | ---------------------------- |
-| `TF_VAR_SSH_PUB_KEY` | SSH public key for VM access |
-
-### Networking (`terraform.tfvars`)
-
-Networking is defined via a list of objects. Terraform automatically assigns IPs sequentially starting from `start_offset`.
+### Network Configuration
 
 ```hcl
-master_count  = 1          # Number of master nodes
-master_cores  = 2          # CPU cores per master
-master_memory = 4096       # Memory (MB) per master
-
-worker_count  = 2          # Number of worker nodes
-worker_cores  = 6          # CPU cores per worker
-worker_memory = 24576      # Memory (MB) per worker
-
 network_interfaces = [
   {
-    bridge       = "vmbr0"       # Management Network
+    bridge       = "vmbr0"        # Management Network
     base_cidr    = "10.9.9.0/24"
-    start_offset = 50            # Master 1 = 10.9.9.50
-    gateway      = "10.9.9.1"    # Gateway only on primary interface
+    start_offset = 50             # First IP: 10.9.9.50
+    gateway      = "10.9.9.1"     # Default gateway
   },
   {
-    bridge       = "vmbr1"       # Cluster Internal Network
+    bridge       = "vmbr1"        # Services Network
     base_cidr    = "10.9.8.0/24"
-    start_offset = 50            # Master 1 = 10.9.8.50
+    start_offset = 50             # First IP: 10.9.8.50
+    # No gateway - internal only
   }
 ]
 ```
 
+### Required Secrets (GitHub Actions)
+
+| Secret | Description |
+|--------|-------------|
+| `MINIO_ACCESS_KEY` | MinIO access key for state storage |
+| `MINIO_SECRET_KEY` | MinIO secret key |
+| `MINIO_ENDPOINT` | MinIO endpoint URL |
+| `MINIO_TF_PLAN_BUCKET` | Bucket for plan artifacts |
+| `PM_API_URL` | Proxmox API URL |
+| `PM_API_TOKEN_ID` | Proxmox API token ID |
+| `PM_API_TOKEN_SECRET` | Proxmox API token secret |
+| `ORG_DISPATCH_TOKEN` | GitHub PAT for Ansible dispatch |
+
 ## CI/CD Workflows
 
-### Validate and Plan (`validate-and-plan.yml`)
+```mermaid
+flowchart LR
+    subgraph PR["Pull Request"]
+        Validate[Validate] --> PlanPR[Plan]
+        PlanPR --> Upload[Upload to MinIO]
+        PlanPR --> CommentPR[Comment on PR]
+    end
+    
+    subgraph Merge["On Merge"]
+        Download[Download Plan] --> ApplyTF[Apply]
+        ApplyTF --> Check{Changes?}
+        Check -->|Yes| TriggerAnsible[Trigger Ansible]
+        Check -->|No| Done[Complete]
+        TriggerAnsible --> Cleanup[Cleanup MinIO]
+    end
+    
+    PR --> Merge
+    
+    style PR fill:#4299e1,stroke:#2b6cb0
+    style Merge fill:#48bb78,stroke:#276749
+```
 
-Triggered on pull requests:
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `validate-and-plan.yml` | Pull request | Validates config, creates plan, comments on PR |
+| `apply.yml` | Merge to main | Downloads plan from MinIO, applies if changes detected |
+| `drift.yml` | Scheduled/manual | Creates GitHub issue if infrastructure drift detected |
+| `destroy.yml` | Manual only | ⚠️ Destroys all infrastructure |
+| `format.yml` | Pull request | Auto-formats Terraform, YAML, JSON |
 
-1. Validates Terraform configuration
-2. Creates a plan and uploads to MinIO
-3. Comments the plan output on the PR
+## Usage
 
-### Apply (`apply.yml`)
-
-Triggered when a PR is merged (or manually):
-
-1. Downloads the plan from MinIO
-2. Applies changes if detected (exit code `2`)
-3. Triggers Ansible deployment via repository dispatch
-4. Cleans up plan artifacts from MinIO
-
-### Drift Detection (`drift.yml`)
-
-Scheduled or manual trigger:
-
-1. Compares actual infrastructure state with configuration
-2. Creates/updates GitHub issue if drift is detected
-3. Auto-closes issue when drift is resolved
-
-### Destroy (`destroy.yml`)
-
-**Manual trigger only** — tears down all infrastructure:
-
-> ⚠️ **Warning**: This will destroy your entire K3s cluster!
-
-### Format (`format.yml`)
-
-Auto-formats Terraform, YAML, and JSON files on PRs.
-
-## Local Development
-
-### Initialize
+### Local Development
 
 ```bash
 # Set environment variables
@@ -187,76 +196,104 @@ export AWS_ENDPOINT_URL="https://minio.local"
 export PM_API_URL="https://pve:8006/api2/json"
 export PM_API_TOKEN_ID="terraform@pve!token"
 export PM_API_TOKEN_SECRET="your-token-secret"
+export TF_VAR_ssh_pub_key="ssh-ed25519 AAAA..."
 
 # Initialize Terraform
 terraform init
-```
 
-### Plan
-
-```bash
-export TF_VAR_ssh_pub_key="ssh-ed25519 AAAA..."
-export TF_VAR_base_vm_name="packer-debian-13.3.0-20260127141346"
-
+# Plan changes
 terraform plan
-```
 
-### Apply
-
-```bash
+# Apply changes
 terraform apply
 ```
 
-## VM Module
+### VM Module
 
-The `modules/vm` module is a reusable component for creating Proxmox VMs with:
+The `modules/vm` module creates Proxmox VMs with:
 
 - Cloud-init configuration (user, SSH keys, networking)
 - Multiple network interfaces (up to 16)
-- PCI passthrough support (for GPUs)
+- PCI passthrough support for GPUs
 - Configurable disk storage
 
-### Example Usage
-
 ```hcl
-module "my_vm" {
+module "worker" {
   source = "./modules/vm"
 
-  vm_id       = 300
-  name        = "my-server"
+  vm_id       = 101
+  name        = "kube-worker-01"
   target_node = "pve"
-  clone       = "debian-template"
+  clone       = "debian-cloud-v1.0.0"
 
-  cores  = 4
-  memory = 8192
+  cores  = 6
+  memory = 24576
 
-  ciuser  = "admin"
-  sshkeys = "ssh-ed25519 AAAA..."
+  network_bridges = ["vmbr0", "vmbr1"]
+  ipconfigs = [
+    "ip=10.9.9.51/24,gw=10.9.9.1",
+    "ip=10.9.8.51/24"
+  ]
 
-  network_bridges   = ["vmbr0"]
-  ipconfigs         = ["ip=10.0.0.100/24,gw=10.0.0.1"]
-  nameserver        = "1.1.1.1"
-  cloudinit_storage = "local-zfs"
-  os_storage        = "vm-pool"
-  os_disk_size      = "50G"
+  pci_devices = [{
+    mapping = "k3s-worker-gpus"
+  }]
 
-  tags = "webserver,production"
+  tags = "k3s,worker"
 }
 ```
 
 ## State Management
 
-Terraform state is stored in MinIO using an S3-compatible backend:
+Terraform state is stored in MinIO with S3-compatible backend:
 
-- **Bucket**: `terraform-state`
-- **Key**: `terraform.tfstate`
+```hcl
+backend "s3" {
+  bucket = "terraform-state"
+  key    = "terraform.tfstate"
+  # Configured via environment variables
+}
+```
+
+## Pipeline Integration
+
+```mermaid
+flowchart TD
+    subgraph Pipeline["Homelab Pipeline"]
+        direction TB
+        Packer["📦 Packer<br/>VM Template"]
+        Terraform["🏗️ Terraform<br/>VM Provisioning"]
+        Ansible["⚙️ Ansible<br/>K3s Cluster"]
+        Platform["🚀 Platform<br/>GitOps Apps"]
+    end
+    
+    Packer -->|manifest.json| Terraform
+    Terraform -->|dispatch| Ansible
+    Ansible -->|bootstrap| Platform
+    
+    style Packer fill:#4299e1,stroke:#2b6cb0
+    style Terraform fill:#805ad5,stroke:#553c9a
+    style Ansible fill:#48bb78,stroke:#276749
+    style Platform fill:#ed8936,stroke:#c05621
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Plan fails with clone error | Verify `packer-manifest.json` has valid template name |
+| Network interface not created | Check bridge exists on Proxmox node |
+| GPU passthrough fails | Verify PCI mapping exists in Proxmox datacenter config |
+| State lock timeout | Check MinIO connectivity, manually unlock if needed |
 
 ## Related Repositories
 
-- [homelab-packer](https://github.com/Starktastic-Homelab/packer) — Builds the base VM template
-- [homelab-ansible](https://github.com/Starktastic-Homelab/ansible) — Configures K3s on provisioned VMs
-- [homelab-platform](https://github.com/Starktastic-Homelab/platform) — Kubernetes applications and GitOps
+| Repository | Description |
+|------------|-------------|
+| [homelab-packer](https://github.com/starktastic/homelab-packer) | Builds VM templates |
+| [homelab-ansible](https://github.com/starktastic/homelab-ansible) | K3s cluster configuration |
+| [homelab-platform](https://github.com/starktastic/homelab-platform) | GitOps application definitions |
 
 ## License
 
-This project is licensed under the MIT License.
+MIT
