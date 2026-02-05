@@ -144,6 +144,7 @@ jobs:
           token: ${{ secrets.ORG_DISPATCH_TOKEN }}
           repository: Starktastic-Homelab/ansible
           event-type: infrastructure-changed
+          client-payload: '{"i915_sriov_version": "${{ fromJSON(env.manifest).builds[0].custom_data.i915_sriov_version }}"}'
 
   cleanup:
     name: Cleanup after apply
