@@ -1,8 +1,8 @@
 # Homelab Terraform
 
-[![Validate & Plan](https://github.com/starktastic/homelab-terraform/actions/workflows/validate-and-plan.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/validate-and-plan.yml)
-[![Apply](https://github.com/starktastic/homelab-terraform/actions/workflows/apply.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/apply.yml)
-[![Drift Detection](https://github.com/starktastic/homelab-terraform/actions/workflows/drift.yml/badge.svg)](https://github.com/starktastic/homelab-terraform/actions/workflows/drift.yml)
+[![Validate & Plan](https://github.com/starktastic/terraform/actions/workflows/validate-and-plan.yml/badge.svg)](https://github.com/starktastic/terraform/actions/workflows/validate-and-plan.yml)
+[![Apply](https://github.com/starktastic/terraform/actions/workflows/apply.yml/badge.svg)](https://github.com/starktastic/terraform/actions/workflows/apply.yml)
+[![Drift Detection](https://github.com/starktastic/terraform/actions/workflows/drift.yml/badge.svg)](https://github.com/starktastic/terraform/actions/workflows/drift.yml)
 ![Terraform](https://img.shields.io/badge/Terraform-1.5+-844FBA?logo=terraform)
 ![Proxmox](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox)
 
@@ -10,7 +10,7 @@ Terraform configuration for provisioning a K3s Kubernetes cluster on Proxmox VE.
 
 ## Overview
 
-This repository provisions the virtual machine infrastructure for the homelab Kubernetes cluster. It consumes VM templates from [homelab-packer](https://github.com/starktastic/homelab-packer) and triggers [homelab-ansible](https://github.com/starktastic/homelab-ansible) for K3s installation upon successful apply.
+This repository provisions the virtual machine infrastructure for the homelab Kubernetes cluster. It consumes VM templates from [packer](https://github.com/starktastic/packer) and triggers [ansible](https://github.com/starktastic/ansible) for K3s installation upon successful apply.
 
 ```mermaid
 flowchart TB
@@ -30,7 +30,7 @@ flowchart TB
     
     MinIO --> Apply
     Apply --> Proxmox
-    Dispatch --> Ansible[homelab-ansible]
+    Dispatch --> Ansible[ansible]
     
     style GH fill:#2d3748,stroke:#4299e1
     style Proxmox fill:#2d3748,stroke:#e57000
@@ -83,7 +83,7 @@ graph TB
 ## Repository Structure
 
 ```
-homelab-terraform/
+terraform/
 ├── main.tf                 # Master and worker node definitions
 ├── outputs.tf              # Cluster outputs (node IPs, VM IDs)
 ├── providers.tf            # Terraform and Proxmox provider config
@@ -103,7 +103,7 @@ homelab-terraform/
 - [Terraform](https://www.terraform.io/) >= 1.5
 - [Proxmox VE](https://www.proxmox.com/) >= 8.0 with API access
 - [MinIO](https://min.io/) or S3-compatible storage for state
-- Packer template built via [homelab-packer](https://github.com/starktastic/homelab-packer)
+- Packer template built via [packer](https://github.com/starktastic/packer)
 
 ## Configuration
 
@@ -264,17 +264,17 @@ flowchart TD
         Packer["📦 Packer<br/>VM Template"]
         Terraform["🏗️ Terraform<br/>VM Provisioning"]
         Ansible["⚙️ Ansible<br/>K3s Cluster"]
-        Platform["🚀 Platform<br/>GitOps Apps"]
+        Apps["🚀 Apps<br/>GitOps Apps"]
     end
     
     Packer -->|manifest.json| Terraform
     Terraform -->|dispatch| Ansible
-    Ansible -->|bootstrap| Platform
+    Ansible -->|bootstrap| Apps
     
     style Packer fill:#4299e1,stroke:#2b6cb0
     style Terraform fill:#805ad5,stroke:#553c9a
     style Ansible fill:#48bb78,stroke:#276749
-    style Platform fill:#ed8936,stroke:#c05621
+    style Apps fill:#ed8936,stroke:#c05621
 ```
 
 ## Troubleshooting
@@ -290,9 +290,9 @@ flowchart TD
 
 | Repository | Description |
 |------------|-------------|
-| [homelab-packer](https://github.com/starktastic/homelab-packer) | Builds VM templates |
-| [homelab-ansible](https://github.com/starktastic/homelab-ansible) | K3s cluster configuration |
-| [homelab-platform](https://github.com/starktastic/homelab-platform) | GitOps application definitions |
+| [packer](https://github.com/starktastic/packer) | Builds VM templates |
+| [ansible](https://github.com/starktastic/ansible) | K3s cluster configuration |
+| [apps](https://github.com/starktastic/apps) | GitOps application definitions |
 
 ## License
 
