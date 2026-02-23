@@ -32,7 +32,7 @@ jobs:
         env:
           TF_VAR_base_vm_name: 'base_vm_name'
         run: |
-          terraform init -force-copy
+          terraform init
           terraform validate
 
       - name: Read manifest file

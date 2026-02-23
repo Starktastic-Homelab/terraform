@@ -32,7 +32,7 @@ jobs:
           echo -e '\nEOF' >> $GITHUB_ENV
 
       - name: Init
-        run: terraform init -reconfigure
+        run: terraform init
 
       - name: Check for drift
         id: plan

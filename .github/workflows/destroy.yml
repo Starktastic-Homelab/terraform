@@ -31,5 +31,5 @@ jobs:
           TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
           TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
         run: |
-          terraform init -reconfigure
+          terraform init
           terraform destroy -auto-approve
