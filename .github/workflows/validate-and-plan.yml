@@ -18,9 +18,9 @@ jobs:
   validate-and-plan:
     name: Terraform validate and plan
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-      AWS_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
     runs-on: self-hosted
     container:
       image: hashicorp/terraform:latest
@@ -76,8 +76,8 @@ jobs:
           name: planlog
           path: plan.log.b64
 
-  upload-to-min-io:
-    name: Upload Terraform plan and exitcode to MinIO
+  upload-plan:
+    name: Upload Terraform plan and exitcode to S3
     runs-on: self-hosted
     needs: validate-and-plan
     container:
@@ -88,17 +88,16 @@ jobs:
         with:
           name: tfplan
 
-      - name: Upload Terraform plan and exitcode to MinIO
+      - name: Upload Terraform plan and exitcode to S3
         uses: ./.github/actions/s3-cp
         with:
-          aws_access_key_id: ${{ secrets.MINIO_ACCESS_KEY }}
-          aws_secret_access_key: ${{ secrets.MINIO_SECRET_KEY }}
-          aws_endpoint_url: ${{ secrets.MINIO_ENDPOINT }}
+          aws_access_key_id: ${{ secrets.S3_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.S3_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.S3_ENDPOINT }}
           source: |
             plan.tfplan
             plan.exitcode
-          destination: s3://${{ secrets.MINIO_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
-          no_verify_ssl: 'true'
+          destination: s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
 
   comment:
     name: Comment plan in Pull Request
