@@ -28,6 +28,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Debug credentials
+        run: |
+          echo "AWS_ACCESS_KEY_ID is set: ${{ secrets.S3_ACCESS_KEY != '' }}"
+          echo "AWS_SECRET_ACCESS_KEY is set: ${{ secrets.S3_SECRET_KEY != '' }}"
+          echo "AWS_ENDPOINT_URL is set: ${{ secrets.S3_ENDPOINT != '' }}"
+          echo "Endpoint starts with: ${AWS_ENDPOINT_URL:0:10}"
+
       - name: Validate Terraform template
         env:
           TF_VAR_base_vm_name: 'base_vm_name'
