@@ -16,7 +16,7 @@ This repository provisions the virtual machine infrastructure for the homelab Ku
 flowchart TB
     subgraph GH["GitHub Actions"]
         PR[Pull Request] --> Plan[Terraform Plan]
-        Plan --> MinIO[(MinIO Storage)]
+        Plan --> S3[(S3 Storage)]
         Plan --> Comment[PR Comment]
         Merge[Merge to Main] --> Apply[Terraform Apply]
         Apply --> Dispatch[Repository Dispatch]
@@ -28,7 +28,7 @@ flowchart TB
         Worker2["kube-worker-02<br/>6 cores | 24GB | GPU"]
     end
     
-    MinIO --> Apply
+    S3 --> Apply
     Apply --> Proxmox
     Dispatch --> Ansible[ansible]
     
@@ -43,7 +43,7 @@ flowchart TB
 - 🌐 **Dual-NIC Networking** - Management (vmbr0) and services (vmbr1) networks
 - 🎮 **GPU Passthrough** - Intel SR-IOV PCI mapping for worker nodes
 - 🔍 **Drift Detection** - Scheduled checks with GitHub issue creation
-- 📊 **State in MinIO** - S3-compatible backend for state and plan storage
+- 📊 **State in Garage** - S3-compatible backend for state and plan storage
 - ⚡ **Smart Triggers** - Only triggers Ansible when changes are applied
 
 ## Architecture
@@ -102,7 +102,7 @@ terraform/
 
 - [Terraform](https://www.terraform.io/) >= 1.5
 - [Proxmox VE](https://www.proxmox.com/) >= 8.0 with API access
-- [MinIO](https://min.io/) or S3-compatible storage for state
+- [Garage](https://garagehq.deuxfleurs.fr/) or S3-compatible storage for state
 - Packer template built via [packer](https://github.com/starktastic/packer)
 
 ## Configuration
@@ -143,10 +143,10 @@ network_interfaces = [
 
 | Secret | Description |
 |--------|-------------|
-| `MINIO_ACCESS_KEY` | MinIO access key for state storage |
-| `MINIO_SECRET_KEY` | MinIO secret key |
-| `MINIO_ENDPOINT` | MinIO endpoint URL |
-| `MINIO_TF_PLAN_BUCKET` | Bucket for plan artifacts |
+| `S3_ACCESS_KEY` | S3 access key for state storage |
+| `S3_SECRET_KEY` | S3 secret key |
+| `S3_ENDPOINT` | S3 endpoint URL |
+| `S3_TF_PLAN_BUCKET` | Bucket for plan artifacts |
 | `PM_API_URL` | Proxmox API URL |
 | `PM_API_TOKEN_ID` | Proxmox API token ID |
 | `PM_API_TOKEN_SECRET` | Proxmox API token secret |
@@ -158,7 +158,7 @@ network_interfaces = [
 flowchart LR
     subgraph PR["Pull Request"]
         Validate[Validate] --> PlanPR[Plan]
-        PlanPR --> Upload[Upload to MinIO]
+        PlanPR --> Upload[Upload to S3]
         PlanPR --> CommentPR[Comment on PR]
     end
     
@@ -167,7 +167,7 @@ flowchart LR
         ApplyTF --> Check{Changes?}
         Check -->|Yes| TriggerAnsible[Trigger Ansible]
         Check -->|No| Done[Complete]
-        TriggerAnsible --> Cleanup[Cleanup MinIO]
+        TriggerAnsible --> Cleanup[Cleanup S3]
     end
     
     PR --> Merge
@@ -179,7 +179,7 @@ flowchart LR
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
 | `validate-and-plan.yml` | Pull request | Validates config, creates plan, comments on PR |
-| `apply.yml` | Merge to main | Downloads plan from MinIO, applies if changes detected |
+| `apply.yml` | Merge to main | Downloads plan from S3, applies if changes detected |
 | `drift.yml` | Scheduled/manual | Creates GitHub issue if infrastructure drift detected |
 | `destroy.yml` | Manual only | ⚠️ Destroys all infrastructure |
 | `format.yml` | Pull request | Auto-formats Terraform, YAML, JSON |
@@ -190,9 +190,9 @@ flowchart LR
 
 ```bash
 # Set environment variables
-export AWS_ACCESS_KEY_ID="your-minio-key"
-export AWS_SECRET_ACCESS_KEY="your-minio-secret"
-export AWS_ENDPOINT_URL="https://minio.local"
+export AWS_ACCESS_KEY_ID="your-s3-key"
+export AWS_SECRET_ACCESS_KEY="your-s3-secret"
+export AWS_ENDPOINT_URL="http://garage.local:3900"
 export PM_API_URL="https://pve:8006/api2/json"
 export PM_API_TOKEN_ID="terraform@pve!token"
 export PM_API_TOKEN_SECRET="your-token-secret"
@@ -245,7 +245,7 @@ module "worker" {
 
 ## State Management
 
-Terraform state is stored in MinIO with S3-compatible backend:
+Terraform state is stored in Garage with S3-compatible backend:
 
 ```hcl
 backend "s3" {
@@ -284,7 +284,7 @@ flowchart TD
 | Plan fails with clone error | Verify `packer-manifest.json` has valid template name |
 | Network interface not created | Check bridge exists on Proxmox node |
 | GPU passthrough fails | Verify PCI mapping exists in Proxmox datacenter config |
-| State lock timeout | Check MinIO connectivity, manually unlock if needed |
+| State lock timeout | Check Garage connectivity, manually unlock if needed |
 
 ## Related Repositories
 
