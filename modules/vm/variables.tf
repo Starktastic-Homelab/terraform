@@ -121,3 +121,12 @@ variable "pci_devices" {
   }))
   default = []
 }
+
+variable "usb_devices" {
+  description = "USB Passthrough Devices (via Proxmox USB mappings)"
+  type = list(object({
+    mapping_id = string
+    usb3       = optional(bool, false)
+  }))
+  default = []
+}

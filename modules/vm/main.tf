@@ -233,6 +233,54 @@ resource "proxmox_vm_qemu" "vm" {
     }
   }
 
+  usbs {
+    dynamic "usb0" {
+      for_each = length(var.usb_devices) > 0 ? [var.usb_devices[0]] : []
+      content {
+        mapping {
+          mapping_id = usb0.value.mapping_id
+          usb3       = try(usb0.value.usb3, false)
+        }
+      }
+    }
+    dynamic "usb1" {
+      for_each = length(var.usb_devices) > 1 ? [var.usb_devices[1]] : []
+      content {
+        mapping {
+          mapping_id = usb1.value.mapping_id
+          usb3       = try(usb1.value.usb3, false)
+        }
+      }
+    }
+    dynamic "usb2" {
+      for_each = length(var.usb_devices) > 2 ? [var.usb_devices[2]] : []
+      content {
+        mapping {
+          mapping_id = usb2.value.mapping_id
+          usb3       = try(usb2.value.usb3, false)
+        }
+      }
+    }
+    dynamic "usb3" {
+      for_each = length(var.usb_devices) > 3 ? [var.usb_devices[3]] : []
+      content {
+        mapping {
+          mapping_id = usb3.value.mapping_id
+          usb3       = try(usb3.value.usb3, false)
+        }
+      }
+    }
+    dynamic "usb4" {
+      for_each = length(var.usb_devices) > 4 ? [var.usb_devices[4]] : []
+      content {
+        mapping {
+          mapping_id = usb4.value.mapping_id
+          usb3       = try(usb4.value.usb3, false)
+        }
+      }
+    }
+  }
+
   tags = var.tags
 
   lifecycle {
