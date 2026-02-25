@@ -73,5 +73,10 @@ module "worker_nodes" {
     rombar = false
   }]
 
+  usb_devices = count.index == 0 ? [{
+    mapping_id = "k3s-worker-zigbee"
+    usb3       = false
+  }] : []
+
   tags = "k3s,worker"
 }
