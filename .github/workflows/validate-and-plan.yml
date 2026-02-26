@@ -63,7 +63,7 @@ jobs:
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
       - name: Upload Terraform plan artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: |
@@ -71,7 +71,7 @@ jobs:
             plan.exitcode
 
       - name: Upload plan log artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: planlog
           path: plan.log.b64
@@ -84,7 +84,7 @@ jobs:
       image: amazon/aws-cli:latest
     steps:
       - name: Download Terraform plan artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: tfplan
 
@@ -110,7 +110,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download Terraform plan log artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: planlog
 
