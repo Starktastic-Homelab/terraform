@@ -6,6 +6,8 @@ worker_count  = 2
 worker_cores  = 6
 worker_memory = 24576
 
+os_disk_size = "64G"
+
 network_interfaces = [
   {
     bridge       = "vmbr0"
