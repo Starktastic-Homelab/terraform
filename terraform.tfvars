@@ -1,10 +1,10 @@
 master_count  = 1
 master_cores  = 2
-master_memory = 4096
+master_memory = 6144
 
 worker_count  = 2
 worker_cores  = 6
-worker_memory = 24576
+worker_memory = 28672
 
 os_disk_size = "64G"
 
