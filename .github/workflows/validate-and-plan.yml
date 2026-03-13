@@ -123,7 +123,7 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: Post comment
-        uses: marocchino/sticky-pull-request-comment@v2.9.4
+        uses: marocchino/sticky-pull-request-comment@v3.0.2
         with:
           header: terraform-plan
           message: |
