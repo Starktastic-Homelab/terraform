@@ -6,7 +6,7 @@ worker_count  = 2
 worker_cores  = 6
 worker_memory = 28672
 
-os_disk_size = "64G"
+os_disk_size = "128G"
 
 network_interfaces = [
   {
