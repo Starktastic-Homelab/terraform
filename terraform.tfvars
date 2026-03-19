@@ -1,6 +1,6 @@
 master_count  = 1
 master_cores  = 4
-master_memory = 8192
+master_memory = 16384
 
 worker_count  = 2
 worker_cores  = 6
