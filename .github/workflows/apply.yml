@@ -16,16 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
+      apply_mode: ${{ steps.check.outputs.apply_mode }}
     steps:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHOULD_RUN="false"
+          APPLY_MODE="normal"
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "✅ Manual dispatch detected."
             SHOULD_RUN="true"
+            APPLY_MODE="normal"
 
           elif [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
             TITLE="${{ github.event.pull_request.title }}"
@@ -44,14 +47,44 @@ jobs:
               echo "✅ PR Merged and no skip patterns found."
               SHOULD_RUN="true"
             fi
+
+            # Parse PR body checkboxes for apply mode
+            DRAIN=$(echo "$BODY" | grep -c '\- \[x\] Drain cluster nodes before apply' || true)
+            DESTROY=$(echo "$BODY" | grep -c '\- \[x\] Destroy and recreate infrastructure before apply' || true)
+            CONFIRM=$(echo "$BODY" | grep -c '\- \[x\] I confirm the destructive action selected above' || true)
+
+            if [[ "$DRAIN" -gt 0 && "$DESTROY" -gt 0 ]]; then
+              echo "❌ Cannot select both drain and destroy. These are mutually exclusive."
+              exit 1
+            fi
+
+            if [[ "$DESTROY" -gt 0 ]]; then
+              if [[ "$CONFIRM" -eq 0 ]]; then
+                echo "❌ Destroy requires confirmation checkbox."
+                exit 1
+              fi
+              echo "💣 Destroy mode selected and confirmed."
+              APPLY_MODE="destroy"
+            elif [[ "$DRAIN" -gt 0 ]]; then
+              if [[ "$CONFIRM" -eq 0 ]]; then
+                echo "❌ Drain requires confirmation checkbox."
+                exit 1
+              fi
+              echo "🔄 Drain mode selected and confirmed."
+              APPLY_MODE="drain"
+            fi
           fi
 
           echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
+          echo "apply_mode=$APPLY_MODE" >> $GITHUB_OUTPUT
 
   download-plan:
     name: Download Terraform plan and exitcode from S3
     needs: check-conditions
-    if: needs.check-conditions.outputs.should_run == 'true' && github.event_name == 'pull_request_target'
+    if: |
+      needs.check-conditions.outputs.should_run == 'true'
+        && needs.check-conditions.outputs.apply_mode != 'destroy'
+        && github.event_name == 'pull_request_target'
     runs-on: self-hosted
     container:
       image: amazon/aws-cli:latest
@@ -75,11 +108,39 @@ jobs:
             plan.tfplan
             plan.exitcode
 
-  apply:
-    name: Terraform apply
+  pre-apply:
+    name: Drain cluster nodes
     needs: [check-conditions, download-plan]
     if: |
-      !cancelled() && needs.check-conditions.outputs.should_run == 'true'
+      !cancelled()
+        && needs.check-conditions.outputs.should_run == 'true'
+        && needs.check-conditions.outputs.apply_mode == 'drain'
+    runs-on: self-hosted
+    container:
+      image: bitnami/kubectl:latest
+    steps:
+      - name: Setup Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_RAW }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Drain worker nodes
+        run: |
+          kubectl drain kube-worker-01 --ignore-daemonsets --delete-emptydata --timeout=120s
+          kubectl drain kube-worker-02 --ignore-daemonsets --delete-emptydata --timeout=120s
+
+      - name: Drain master node
+        run: kubectl drain kube-master-01 --ignore-daemonsets --delete-emptydata --timeout=120s
+
+  apply:
+    name: Terraform apply
+    needs: [check-conditions, download-plan, pre-apply]
+    if: |
+      !cancelled()
+        && needs.check-conditions.outputs.should_run == 'true'
+        && (needs.pre-apply.result == 'success' || needs.pre-apply.result == 'skipped')
+        && (needs.download-plan.result == 'success' || needs.download-plan.result == 'skipped')
     runs-on: self-hosted
     container:
       image: hashicorp/terraform:latest
@@ -94,7 +155,7 @@ jobs:
           echo -e '\nEOF' >> $GITHUB_ENV
 
       - name: Download Terraform plan artifact
-        if: github.event_name == 'pull_request_target'
+        if: needs.check-conditions.outputs.apply_mode != 'destroy' && github.event_name == 'pull_request_target'
         uses: actions/download-artifact@v8
         with:
           name: tfplan
@@ -103,8 +164,10 @@ jobs:
         id: check
         run: |
           HAS_CHANGES="true"
-          
-          if [[ -f "plan.exitcode" ]]; then
+
+          if [[ "${{ needs.check-conditions.outputs.apply_mode }}" == "destroy" ]]; then
+            echo "💣 Destroy mode — changes implied."
+          elif [[ -f "plan.exitcode" ]]; then
             CODE=$(cat plan.exitcode)
             if [[ "$CODE" == "2" ]]; then
               HAS_CHANGES="true"
@@ -114,10 +177,25 @@ jobs:
               echo "✅ No changes (Exit Code $CODE)."
             fi
           fi
-          
+
           echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
 
-      - name: Apply Terraform plan
+      - name: Destroy infrastructure
+        if: needs.check-conditions.outputs.apply_mode == 'destroy'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
+          PM_API_URL: ${{ secrets.PM_API_URL }}
+          PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
+          PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
+          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
+          TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
+        run: |
+          terraform init
+          terraform destroy -auto-approve
+
+      - name: Apply Terraform
         if: steps.check.outputs.has_changes == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
@@ -144,17 +222,52 @@ jobs:
           repository: Starktastic-Homelab/ansible
           event-type: infrastructure-changed
 
+  post-apply:
+    name: Uncordon cluster nodes
+    needs: [check-conditions, apply]
+    if: |
+      always()
+        && needs.check-conditions.outputs.apply_mode == 'drain'
+        && needs.check-conditions.outputs.should_run == 'true'
+    runs-on: self-hosted
+    container:
+      image: bitnami/kubectl:latest
+    steps:
+      - name: Setup Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_RAW }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Wait for nodes to be ready
+        run: |
+          kubectl wait --for=condition=Ready node/kube-master-01 --timeout=300s
+          kubectl wait --for=condition=Ready node/kube-worker-01 --timeout=300s
+          kubectl wait --for=condition=Ready node/kube-worker-02 --timeout=300s
+
+      - name: Uncordon master node
+        run: kubectl uncordon kube-master-01
+
+      - name: Uncordon worker nodes
+        run: |
+          kubectl uncordon kube-worker-01
+          kubectl uncordon kube-worker-02
+
   cleanup:
     name: Cleanup after apply
+    needs: [check-conditions, apply, post-apply]
+    if: |
+      always()
+        && needs.check-conditions.outputs.should_run == 'true'
+        && needs.check-conditions.outputs.apply_mode != 'destroy'
+        && github.event_name == 'pull_request_target'
     runs-on: self-hosted
+    container:
+      image: amazon/aws-cli:latest
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
       AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
-    container:
-      image: amazon/aws-cli:latest
-    if: always() && needs.check-conditions.outputs.should_run == 'true' && github.event_name == 'pull_request_target'
-    needs: [check-conditions, apply]
     steps:
       - name: Remove Terraform plan & exitcode files from S3
         run: aws s3 rm s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }} --recursive --quiet
