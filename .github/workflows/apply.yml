@@ -128,11 +128,11 @@ jobs:
 
       - name: Drain worker nodes
         run: |
-          kubectl drain kube-worker-01 --ignore-daemonsets --delete-emptydata --timeout=120s
-          kubectl drain kube-worker-02 --ignore-daemonsets --delete-emptydata --timeout=120s
+          kubectl drain kube-worker-01 --ignore-daemonsets --delete-emptydir-data --timeout=120s
+          kubectl drain kube-worker-02 --ignore-daemonsets --delete-emptydir-data --timeout=120s
 
       - name: Drain master node
-        run: kubectl drain kube-master-01 --ignore-daemonsets --delete-emptydata --timeout=120s
+        run: kubectl drain kube-master-01 --ignore-daemonsets --delete-emptydir-data --timeout=120s
 
   apply:
     name: Terraform apply
