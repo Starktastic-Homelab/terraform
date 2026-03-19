@@ -25,23 +25,27 @@ jobs:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           SHOULD_RUN="false"
           APPLY_MODE="normal"
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "✅ Manual dispatch detected."
             SHOULD_RUN="true"
             APPLY_MODE="normal"
 
-          elif [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
-            TITLE="${{ github.event.pull_request.title }}"
-            BODY="${{ github.event.pull_request.body }}"
-            COMMIT_MSG=$(gh pr view ${{ github.event.pull_request.number }} \
-              --repo ${{ github.repository }} \
+          elif [[ "$PR_MERGED" == "true" ]]; then
+            COMMIT_MSG=$(gh pr view "$PR_NUMBER" \
+              --repo "$REPO" \
               --json commits \
               --jq '.commits[-1].messageHeadline + " " + .commits[-1].messageBody')
-            FULL_TEXT="$TITLE $BODY $COMMIT_MSG"
+            FULL_TEXT="$PR_TITLE $PR_BODY $COMMIT_MSG"
 
             # Patterns based on https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs
             if echo "$FULL_TEXT" | grep -iqE "\[(skip ci|ci skip|no ci|skip actions|actions skip)\]"; then
@@ -53,9 +57,9 @@ jobs:
             fi
 
             # Parse PR body checkboxes for apply mode
-            DRAIN=$(echo "$BODY" | grep -c '\- \[x\] Drain cluster nodes before apply' || true)
-            DESTROY=$(echo "$BODY" | grep -c '\- \[x\] Destroy and recreate infrastructure before apply' || true)
-            CONFIRM=$(echo "$BODY" | grep -c '\- \[x\] I confirm the destructive action selected above' || true)
+            DRAIN=$(echo "$PR_BODY" | grep -c '\- \[x\] Drain cluster nodes before apply' || true)
+            DESTROY=$(echo "$PR_BODY" | grep -c '\- \[x\] Destroy and recreate infrastructure before apply' || true)
+            CONFIRM=$(echo "$PR_BODY" | grep -c '\- \[x\] I confirm the destructive action selected above' || true)
 
             if [[ "$DRAIN" -gt 0 && "$DESTROY" -gt 0 ]]; then
               echo "❌ Cannot select both drain and destroy. These are mutually exclusive."
