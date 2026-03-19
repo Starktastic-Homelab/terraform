@@ -126,13 +126,12 @@ jobs:
           echo "${{ secrets.KUBECONFIG_RAW }}" > /tmp/kubeconfig
           chmod 600 /tmp/kubeconfig
 
-      - name: Drain worker nodes
+      - name: Drain all nodes
         run: |
-          kubectl drain kube-worker-01 --ignore-daemonsets --delete-emptydata --timeout=120s
-          kubectl drain kube-worker-02 --ignore-daemonsets --delete-emptydata --timeout=120s
-
-      - name: Drain master node
-        run: kubectl drain kube-master-01 --ignore-daemonsets --delete-emptydata --timeout=120s
+          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+            echo "🔄 Draining $node..."
+            kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=120s
+          done
 
   apply:
     name: Terraform apply
@@ -242,18 +241,14 @@ jobs:
           chmod 600 /tmp/kubeconfig
 
       - name: Wait for nodes to be ready
-        run: |
-          kubectl wait --for=condition=Ready node/kube-master-01 --timeout=300s
-          kubectl wait --for=condition=Ready node/kube-worker-01 --timeout=300s
-          kubectl wait --for=condition=Ready node/kube-worker-02 --timeout=300s
+        run: kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
-      - name: Uncordon master node
-        run: kubectl uncordon kube-master-01
-
-      - name: Uncordon worker nodes
+      - name: Uncordon all nodes
         run: |
-          kubectl uncordon kube-worker-01
-          kubectl uncordon kube-worker-02
+          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+            echo "✅ Uncordoning $node..."
+            kubectl uncordon "$node"
+          done
 
   cleanup:
     name: Cleanup after apply
