@@ -128,8 +128,23 @@ jobs:
 
       - name: Drain all nodes
         run: |
+          MASTERS=""
+          WORKERS=""
           for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-            echo "🔄 Draining $node..."
+            if kubectl get node "$node" -o jsonpath='{.metadata.labels}' | grep -q '"node-role.kubernetes.io/master"'; then
+              MASTERS="$MASTERS $node"
+            else
+              WORKERS="$WORKERS $node"
+            fi
+          done
+
+          for node in $WORKERS; do
+            echo "🔄 Draining worker $node..."
+            kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=120s
+          done
+
+          for node in $MASTERS; do
+            echo "🔄 Draining master $node..."
             kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=120s
           done
 
