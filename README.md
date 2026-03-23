@@ -19,7 +19,8 @@ flowchart TB
         direction TB
         PR["Pull Request"] --> Plan["terraform plan\n+ PR comment"]
         Plan --> S3[("Garage S3\nplan artifact")]
-        Merge["Merge to main"] --> Apply["terraform apply"]
+        Plan --> Merge["Merge to main"]
+        Merge --> Apply["terraform apply"]
         S3 --> Apply
         Apply --> Check{"Infra\nchanged?"}
         Check -- "Yes" --> Dispatch["repository_dispatch\n→ Ansible"]
@@ -181,8 +182,8 @@ flowchart LR
         DL["Download plan\nfrom S3"] --> Mode{"PR body\ncheckboxes?"}
         Mode -- "☐ Drain ☐ Destroy" --> Normal["terraform apply\n(saved plan)"]
         Mode -- "☑ Drain" --> Drain["kubectl drain\n→ apply → uncordon"]
-        Mode -- "☑ Destroy" --> Destroy["terraform destroy"]
-        Normal & Drain --> Changed{"Exit code\n= 2?"}
+        Mode -- "☑ Destroy" --> Destroy["terraform destroy\n→ terraform apply"]
+        Normal & Drain & Destroy --> Changed{"Exit code\n= 2?"}
         Changed -- "Yes" --> Trigger["repository_dispatch\n→ Ansible"]
         Changed -- "No" --> Skip["No changes\nskip dispatch"]
     end
