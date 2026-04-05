@@ -57,8 +57,8 @@ flowchart TB
         end
 
         subgraph networks["Network Fabric"]
-            MGMT["vmbr0 — Management\n10.9.9.0/24"]
-            SVC["vmbr1 — Services\n10.9.8.0/24"]
+            MGMT["vmbr0 · Management\n10.9.9.0/24"]
+            SVC["vmbr1 · Services\n10.9.8.0/24"]
         end
     end
 
@@ -69,14 +69,15 @@ flowchart TB
     W2 --- MGMT
     W2 --- SVC
 
-    TEMPLATE["📦 Packer Template\n(VM 900)"] -.->|clone| M1
+    TEMPLATE[(Packer Template\nVM 900)] -.->|clone| M1
     TEMPLATE -.->|clone| W1
     TEMPLATE -.->|clone| W2
 
     style proxmox fill:#E57000,color:#fff
-    style TEMPLATE fill:#02A8EF,color:#fff
     style master fill:#7B42BC,color:#fff
     style workers fill:#326CE5,color:#fff
+    classDef tmpl fill:#02A8EF,stroke:#0196D4,color:#fff
+    class TEMPLATE tmpl
 ```
 
 All VMs are cloned from the same immutable Packer template, then individualized via cloud-init (hostname, static IPs, SSH keys). Worker nodes additionally receive **Intel iGPU virtual functions** via PCI passthrough for hardware-accelerated transcoding and ML workloads.
@@ -110,15 +111,15 @@ A reusable Terraform module (`modules/vm/`) encapsulates all VM provisioning log
 
 ```mermaid
 flowchart TB
-    ROOT["Root Module\n(main.tf)"]
+    ROOT(["Root Module\nmain.tf"])
 
-    ROOT -->|"count = master_count"| MASTER["module.master_nodes\nNo PCI devices"]
-    ROOT -->|"count = worker_count"| WORKER["module.worker_nodes\n+ GPU PCI passthrough"]
+    ROOT ==>|"count = master_count"| MASTER["module.master_nodes\nNo PCI devices"]
+    ROOT ==>|"count = worker_count"| WORKER["module.worker_nodes\n+ GPU PCI passthrough"]
 
     subgraph mod["modules/vm/"]
-        VM["proxmox_vm_qemu"]
-        VM --> CI["Cloud-Init\nUser · SSH Keys · IPs"]
-        VM --> DISK["OS Disk\nvirtio · IOThread · TRIM"]
+        VM[[proxmox_vm_qemu]]
+        VM --> CI([Cloud-Init\nUser · SSH Keys · IPs])
+        VM --> DISK[(OS Disk\nvirtio · IOThread · TRIM)]
         VM --> NET["Network Interfaces\nUp to 16 NICs"]
         VM --> PCI["PCI Passthrough\nUp to 15 devices"]
         VM --> USB["USB Passthrough\nUp to 5 devices"]
@@ -127,8 +128,9 @@ flowchart TB
     MASTER --> mod
     WORKER --> mod
 
-    style ROOT fill:#7B42BC,color:#fff
+    classDef root fill:#7B42BC,stroke:#6A35A3,color:#fff
     style mod fill:#3C3C3C,color:#fff
+    class ROOT root
 ```
 
 The module supports:
@@ -164,12 +166,14 @@ This file is **automatically updated via PR** from the Packer build workflow. Th
 
 ```mermaid
 flowchart LR
-    PK["📦 Packer Build"] -->|"Creates PR with\npacker-manifest.json"| PR["Pull Request"]
-    PR -->|"Review + Merge"| TF["🏗️ Terraform Plan"]
-    TF -->|"Clone template"| VMs["VMs 200-202"]
+    PK(["📦 Packer Build"]) ==>|"Creates PR with\npacker-manifest.json"| PR{{"Pull Request\n+ Review"}}
+    PR ==>|Merge| TF(["🏗️ Terraform Plan"])
+    TF ==>|"Clone template"| VMs[(VMs 200–202)]
 
-    style PK fill:#02A8EF,color:#fff
-    style TF fill:#7B42BC,color:#fff
+    classDef packer fill:#02A8EF,stroke:#0196D4,color:#fff
+    classDef terraform fill:#7B42BC,stroke:#6A35A3,color:#fff
+    class PK packer
+    class TF terraform
 ```
 
 ---
@@ -193,31 +197,33 @@ Four workflows manage the full infrastructure lifecycle:
 
 ```mermaid
 flowchart TD
-    subgraph "PR Phase"
-        PR[Pull Request] --> FMT[format.yml\nterraform fmt + Prettier]
+    subgraph pr["PR Phase"]
+        PR([Pull Request]) --> FMT[format.yml\nterraform fmt + Prettier]
         PR --> VP[validate-and-plan.yml\nInit → Validate → Plan]
-        VP --> CMT[Post plan as PR comment]
-        VP --> S3[Upload plan to S3]
+        VP --> CMT>Post plan as\nPR comment]
+        VP --> S3[(Upload plan\nto S3)]
     end
 
-    subgraph "Merge Phase"
-        MERGE[Merge to Main] --> APP[apply.yml\nDownload plan → Apply]
+    subgraph merge["Merge Phase"]
+        MERGE([Merge to Main]) ==> APP[apply.yml\nDownload plan → Apply]
         APP -->|Normal| APPLY[Terraform Apply]
-        APP -->|Drain mode| DRAIN[Drain nodes → Apply → Uncordon]
+        APP -->|Drain mode| DRAIN[Drain nodes →\nApply → Uncordon]
         APP -->|Destroy mode| DESTROY[Terraform Destroy]
-        APPLY --> DISPATCH["repository_dispatch\n→ Ansible repo"]
-        DRAIN --> DISPATCH
+        APPLY & DRAIN ==> DISPATCH>repository_dispatch\n→ Ansible repo]
     end
 
-    subgraph "Scheduled"
-        DAILY[Daily 8 AM] --> DRIFT[drift.yml\nDetect infrastructure drift]
-        DRIFT -->|Drift found| ISSUE[Create GitHub Issue]
-        DRIFT -->|No drift| CLOSE[Auto-close existing issue]
+    subgraph sched["Scheduled"]
+        DAILY((Daily\n8 AM)) --> DRIFT[drift.yml\nDetect drift]
+        DRIFT -.->|Drift found| ISSUE>Create GitHub\nIssue]
+        DRIFT -.->|No drift| CLOSE["Auto-close\nexisting issue"]
     end
 
-    style APP fill:#7B42BC,color:#fff
-    style DISPATCH fill:#EE0000,color:#fff
-    style DRIFT fill:#E57000,color:#fff
+    classDef apply fill:#7B42BC,stroke:#6A35A3,color:#fff
+    classDef dispatch fill:#EE0000,stroke:#CC0000,color:#fff
+    classDef drift fill:#E57000,stroke:#CC6300,color:#fff
+    class APP apply
+    class DISPATCH dispatch
+    class DRIFT drift
 ```
 
 | Workflow | Trigger | Purpose |
