@@ -69,7 +69,7 @@ module "worker_nodes" {
 
   pci_devices = [{
     host   = "k3s-worker-gpus"
-    pcie   = false
+    pcie   = true
     rombar = false
   }]
 
