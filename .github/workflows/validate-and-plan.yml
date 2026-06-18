@@ -26,7 +26,7 @@ jobs:
       image: hashicorp/terraform:latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate Terraform template
         env:
@@ -107,7 +107,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download Terraform plan log artifact
         uses: actions/download-artifact@v8
