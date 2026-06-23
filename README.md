@@ -44,41 +44,10 @@ The template name is driven by `packer-manifest.json`, which is automatically up
 
 ## Cluster Architecture
 
-```mermaid
-flowchart TB
-    subgraph proxmox["Proxmox VE Host"]
-        subgraph master["Control Plane"]
-            M1["kube-master-01\n4 vCPU · 16 GB RAM"]
-        end
-
-        subgraph workers["Worker Pool"]
-            W1["kube-worker-01\n6 vCPU · 28 GB RAM\n🎮 Intel iGPU VF"]
-            W2["kube-worker-02\n6 vCPU · 28 GB RAM\n🎮 Intel iGPU VF"]
-        end
-
-        subgraph networks["Network Fabric"]
-            MGMT["vmbr0 · Management\n10.9.9.0/24"]
-            SVC["vmbr1 · Services\n10.9.8.0/24"]
-        end
-    end
-
-    M1 --- MGMT
-    M1 --- SVC
-    W1 --- MGMT
-    W1 --- SVC
-    W2 --- MGMT
-    W2 --- SVC
-
-    TEMPLATE[(Packer Template\nVM 900)] -.->|clone| M1
-    TEMPLATE -.->|clone| W1
-    TEMPLATE -.->|clone| W2
-
-    style proxmox fill:#E57000,color:#fff
-    style master fill:#7B42BC,color:#fff
-    style workers fill:#326CE5,color:#fff
-    classDef tmpl fill:#02A8EF,stroke:#0196D4,color:#fff
-    class TEMPLATE tmpl
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cluster-architecture-dark.png">
+  <img alt="Cluster architecture" src="docs/diagrams/cluster-architecture.png">
+</picture>
 
 All VMs are cloned from the same immutable Packer template, then individualized via cloud-init (hostname, static IPs, SSH keys). Worker nodes additionally receive **Intel iGPU virtual functions** via PCI passthrough for hardware-accelerated transcoding and ML workloads.
 

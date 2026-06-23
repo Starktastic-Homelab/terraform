@@ -1,0 +1,53 @@
+# Proxmox cluster topology: Packer-templated VMs, dual VLANs, Kube-VIP control-plane VIP,
+# NVMe OS disks vs TrueNAS NFS PersistentVolumes.
+direction: right
+
+template: "Packer Template\nVM 900 (immutable)" {
+  icon: ./icons/proxmox.svg
+  shape: image
+}
+
+proxmox: Proxmox VE Host {
+  icon: ./icons/proxmox.svg
+
+  master: Control Plane {
+    m1: "kube-master-01\n4 vCPU · 16 GB RAM" {icon: ./icons/kubernetes.svg}
+  }
+
+  workers: Worker Pool {
+    w1: "kube-worker-01\n6 vCPU · 28 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
+    w2: "kube-worker-02\n6 vCPU · 28 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
+  }
+
+  os: "os_storage (NVMe)\nVM root disks" {shape: cylinder}
+}
+
+net: Network Fabric {
+  vip: "Kube-VIP\nControl-plane VIP\n10.9.9.99"
+  mgmt: "Management VLAN\nvmbr0 · 10.9.9.0/24"
+  svc: "Services VLAN\nvmbr1 · 10.9.8.0/24"
+}
+
+storage: Cluster Storage {
+  truenas: "TrueNAS\nNFS 10.9.8.30" {icon: ./icons/truenas.svg}
+  pv: "PersistentVolumes\n(NFS-backed)" {shape: cylinder}
+}
+
+template -> proxmox.master.m1: clone {style.stroke-dash: 3}
+template -> proxmox.workers.w1: clone {style.stroke-dash: 3}
+template -> proxmox.workers.w2: clone {style.stroke-dash: 3}
+
+proxmox.master.m1 -> net.mgmt
+proxmox.workers.w1 -> net.mgmt
+proxmox.workers.w2 -> net.mgmt
+proxmox.master.m1 -> net.svc
+proxmox.workers.w1 -> net.svc
+proxmox.workers.w2 -> net.svc
+
+net.vip -> net.mgmt: hosted on
+proxmox.master.m1 -> proxmox.os: root disk
+proxmox.workers.w1 -> proxmox.os: root disk
+proxmox.workers.w2 -> proxmox.os: root disk
+
+storage.truenas -> net.svc: NFS export
+storage.truenas -> storage.pv: provisions
