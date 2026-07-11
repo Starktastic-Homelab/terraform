@@ -25,6 +25,8 @@ resource "proxmox_vm_qemu" "vm" {
 
   memory = var.memory
 
+  power_state = "running"
+
   os_type    = var.os_type
   ciuser     = var.ciuser
   cipassword = var.cipassword
