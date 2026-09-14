@@ -124,6 +124,7 @@ class CanaryRun:
         before = ClusterProof(self.config, old_runner).snapshot(connection, actual_vm, identity)
         if any(first.get(key) != value for key, value in before.items()):
             raise CanaryError("first-generation cluster/PVC/binding changed before VM destruction")
+        self.api.require_rebuild_access(self.config)
         self.phase("destroying-first-generation")
         self.vm(old_runner).destroy(first["vm"])
         self.phase("old-vm-absent-and-state-removed")

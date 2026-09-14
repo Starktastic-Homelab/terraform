@@ -16,16 +16,19 @@ provider "proxmox" {
   pm_tls_insecure = false
   pm_log_enable   = false
   pm_debug        = false
+  # The caller checks actual token permissions, not the parent user's root ACL.
+  pm_minimum_permission_check = false
 }
 
 module "canary" {
   source = "../../modules/vm"
 
-  vm_id       = var.vm_id
-  name        = "iscsi-rebuild-canary-${var.fixture_id}"
-  target_node = var.target_node
-  clone       = var.template_name
-  tags        = "iscsi-rebuild-canary"
+  vm_id         = var.vm_id
+  name          = "iscsi-rebuild-canary-${var.fixture_id}"
+  target_node   = var.target_node
+  resource_pool = var.resource_pool
+  clone         = var.template_name
+  tags          = "iscsi-rebuild-canary"
 
   ciuser  = var.ciuser
   sshkeys = var.ssh_public_key

@@ -124,7 +124,7 @@ def validate_config(value, *, require_ansible=True):
         "storage_bridge", "nameserver", "ciuser", "ssh_public_key_file",
         "ssh_private_key_file", "cloudinit_storage", "os_storage", "ansible_checkout", "nas",
     }
-    optional = {"proxmox_ca_file", "flannel_iface", "ansible_runtime_dir"}
+    optional = {"proxmox_ca_file", "flannel_iface", "ansible_runtime_dir", "resource_pool"}
     if not isinstance(value, dict) or not required <= value.keys() or value.keys() - required - optional:
         raise CanaryError("operator config has missing or unknown keys; credentials belong in the environment")
     config = json.loads(json.dumps(value))
@@ -135,6 +135,9 @@ def validate_config(value, *, require_ansible=True):
     for key in ("target_node", "template_name", "management_bridge", "storage_bridge", "cloudinit_storage", "os_storage"):
         if not isinstance(config[key], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", config[key]):
             raise CanaryError("invalid infrastructure name in config")
+    pool = config.get("resource_pool")
+    if pool is not None and (not isinstance(pool, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,99}", pool)):
+        raise CanaryError("resource_pool must be a flat pool name starting with a letter, or null")
     if not isinstance(config["ciuser"], str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", config["ciuser"]):
         raise CanaryError("invalid cloud-init user")
     config.setdefault("flannel_iface", "eth1")
@@ -257,6 +260,9 @@ def validate_vm_values(values, config):
         }.items()
     ) or set(str(values.get("tags", "")).split(";")) != {VM_TAG}:
         raise CanaryError("VM ownership mismatch: ID, name, node and fixed canary tag must all match")
+    pool = values.get("pool")
+    if (None if pool == "" else pool) != config.get("resource_pool"):
+        raise CanaryError("VM resource pool does not match the selected canary pool")
 
 
 def validate_state(state, config):
@@ -334,14 +340,82 @@ class ProxmoxAPI:
         return inventory
 
     def require_unused(self, config):
-        inventory = self.require_absent(config)
+        self.require_absent(config)
+        self.resource_pool(config, vm_present=False)
+        self.require_rebuild_access(config)
+
+    def permissions(self, path):
+        result = self.get("/access/permissions?" + urllib.parse.urlencode({"path": path}))
+        permissions = result.get(path) if isinstance(result, dict) else None
+        if not isinstance(permissions, dict) or any(value not in (0, 1) for value in permissions.values()):
+            raise CanaryError("invalid or missing effective Proxmox permissions on " + path)
+        return permissions
+
+    def resource_pool(self, config, *, vm_present):
+        pool = config.get("resource_pool")
+        if pool is None:
+            return None
+        index = self.get("/pools")
+        if not isinstance(index, list) or any(
+            not isinstance(row, dict) or not isinstance(row.get("poolid"), str) for row in index
+        ):
+            raise CanaryError("invalid Proxmox resource pool inventory")
+        if any(row["poolid"].startswith(pool + "/") for row in index):
+            raise CanaryError("canary resource pool must not have child pools")
+        rows = self.get("/pools?" + urllib.parse.urlencode({"poolid": pool}))
+        if (
+            not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict)
+            or rows[0].get("poolid") != pool or not isinstance(rows[0].get("members"), list)
+        ):
+            raise CanaryError("configured Proxmox resource pool is unavailable")
+        members = rows[0]["members"]
+        if len(members) != int(vm_present) or any(
+            not isinstance(member, dict) or any(member.get(key) != value for key, value in (
+                ("type", "qemu"), ("vmid", config["vm_id"]), ("node", config["target_node"]),
+            )) for member in members
+        ):
+            raise CanaryError("resource pool must be empty or contain only the recorded canary VM")
+        return rows[0]["poolid"]
+
+    def require_rebuild_access(self, config):
+        pool = config.get("resource_pool")
+        scope = "/pool/" + pool if pool is not None else "/vms"
+        permissions = self.permissions(scope)
+        required = {
+            "VM.Allocate", "VM.Audit", "VM.PowerMgmt", "VM.Config.CDROM",
+            "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Disk",
+            "VM.Config.HWType", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options",
+        }
+        if pool is not None:
+            required.add("Pool.Audit")
+        guest_access = permissions.get("VM.Monitor") == 1 or all(
+            permissions.get(key) == 1 for key in ("VM.GuestAgent.Audit", "VM.GuestAgent.FileRead")
+        )
+        if any(permissions.get(key) != 1 for key in required) or not guest_access:
+            raise CanaryError("durable propagated Proxmox VM permissions are required on " + scope)
+        inventory = self.get("/cluster/resources?type=vm")
+        if not isinstance(inventory, list):
+            raise CanaryError("invalid Proxmox inventory")
         templates = [
             vm for vm in inventory if vm.get("name") == config["template_name"]
             and vm.get("node") == config["target_node"] and vm.get("type") == "qemu"
             and vm.get("template") == 1
         ]
-        if len(templates) != 1:
+        if len(templates) != 1 or type(templates[0].get("vmid")) is not int:
             raise CanaryError("exactly one matching QEMU template on the target node is required")
+        checks = [(f"/vms/{templates[0]['vmid']}", {"VM.Clone"})]
+        checks += [
+            ("/storage/" + storage, {"Datastore.Audit", "Datastore.AllocateSpace"})
+            for storage in sorted({config["cloudinit_storage"], config["os_storage"]})
+        ]
+        checks += [
+            ("/sdn/zones/localnetwork/" + config[key], {"SDN.Use"})
+            for key in ("management_bridge", "storage_bridge")
+        ]
+        for path, required in checks:
+            # Permission keys are grants; a zero value only disables propagation.
+            if not required <= self.permissions(path).keys():
+                raise CanaryError("required Proxmox permissions are missing on " + path)
 
     def owned_vm(self, config):
         inventory = self.get("/cluster/resources?type=vm")
@@ -352,8 +426,12 @@ class ProxmoxAPI:
         if vm.get("node") != config["target_node"] or vm.get("name") != node_name(config):
             raise CanaryError("live VM ownership mismatch")
         actual = self.get(f"/nodes/{config['target_node']}/qemu/{config['vm_id']}/config")
+        pool = self.resource_pool(config, vm_present=True) if config.get("resource_pool") is not None else vm.get("pool")
         validate_vm_values(
-            {"vmid": config["vm_id"], "target_node": vm["node"], "name": actual.get("name"), "tags": actual.get("tags")},
+            {
+                "vmid": config["vm_id"], "target_node": vm["node"], "name": actual.get("name"),
+                "tags": actual.get("tags"), "pool": pool,
+            },
             config,
         )
         try:
@@ -479,6 +557,8 @@ class TerraformVM:
             "storage_cidr", "management_gateway", "storage_gateway", "management_bridge",
             "storage_bridge", "nameserver", "ciuser", "cloudinit_storage", "os_storage",
         )}
+        if self.config.get("resource_pool") is not None:
+            variables["resource_pool"] = self.config["resource_pool"]
         variables["ssh_public_key"] = ssh_public_key(Path(self.config["ssh_public_key_file"]).read_text())
         save_private_json(self.var_path, variables)
         self.tf("init", "-input=false", "-reconfigure", "-backend-config=path=" + str(self.state_path))

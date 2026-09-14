@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
@@ -182,6 +183,43 @@ class InfrastructureTests(PrivateFilesTest):
         with self.assertRaisesRegex(self.infra.CanaryError, "confirmation"):
             self.infra.confirm(config, "someone-else")
 
+    def test_pool_config_preserves_legacy_identity_and_requires_a_flat_name(self):
+        self.assertNotIn("resource_pool", self.infra.validate_config(self.config))
+        for pool in (None, "canary-pool"):
+            config = self.infra.validate_config(self.config | {"resource_pool": pool})
+            self.assertEqual(config["resource_pool"], pool)
+        for pool in ("", "990-pool", "parent/child", "../production", "two pools", 990):
+            with self.subTest(pool=pool):
+                with self.assertRaises(self.infra.CanaryError):
+                    self.infra.validate_config(self.config | {"resource_pool": pool})
+
+    def test_pool_input_is_forwarded_without_changing_legacy_tfvars(self):
+        runner = self.infra.Runner(self.work, self.work / "generation-1")
+        for pool in (None, "canary-pool"):
+            config = self.config if pool is None else self.config | {"resource_pool": pool}
+            vm = self.infra.TerraformVM(config, runner, mock.Mock(), {})
+            with mock.patch.object(runner, "run", return_value=""):
+                vm.initialize()
+            variables = self.infra.read_private_json(vm.var_path)
+            if pool is None:
+                self.assertNotIn("resource_pool", variables)
+            else:
+                self.assertEqual(variables.get("resource_pool"), pool)
+
+    def test_pool_identity_is_required_in_both_plan_and_state(self):
+        self.config["resource_pool"] = "canary-pool"
+        self.values["pool"] = "canary-pool"
+        self.infra.validate_state(self.state(), self.config)
+        self.infra.validate_plan(self.plan("create"), self.config, "create")
+        for pool in (None, "", "production"):
+            self.values["pool"] = pool
+            with self.subTest(pool=pool):
+                with self.assertRaisesRegex(self.infra.CanaryError, "pool"):
+                    self.infra.validate_state(self.state(), self.config)
+                for action in ("create", "delete"):
+                    with self.assertRaisesRegex(self.infra.CanaryError, "pool"):
+                        self.infra.validate_plan(self.plan(action), self.config, action)
+
     def test_invalid_identity_ip_and_secret_inputs_fail_before_mutation(self):
         bad_values = [
             ("fixture_id", "../../production"),
@@ -274,8 +312,12 @@ class InfrastructureTests(PrivateFilesTest):
         api = self.infra.ProxmoxAPI("https://pve.example.invalid:8006/api2/json", "test@pve!canary", "test-token")
         template = {"vmid": 987600, "name": "test-template", "node": "test-pve", "template": 1, "type": "qemu"}
         occupied = {"vmid": 987654, "name": self.values["name"], "node": "test-pve", "type": "qemu"}
-        with mock.patch.object(api, "get", return_value=[template]):
+        with (
+            mock.patch.object(api, "get", return_value=[template]),
+            mock.patch.object(api, "require_rebuild_access") as access,
+        ):
             api.require_unused(self.config)
+            access.assert_called_once_with(self.config)
         with mock.patch.object(api, "get", return_value=[template, occupied]):
             with self.assertRaisesRegex(self.infra.CanaryError, "already"):
                 api.require_unused(self.config)
@@ -535,6 +577,94 @@ class InfrastructureTests(PrivateFilesTest):
         self.assertEqual(len(playbooks), 2)
         self.assertTrue(all(str(Path(self.config["ansible_checkout"]) / "canaries" / "iscsi-rebuild.yml") in argv for argv in playbooks))
 
+    def test_pool_access_rejects_vm_specific_acl_before_nas_creation(self):
+        run, world, prepare, _ = self.canary_world()
+        world.permission_scope = "vm"
+        with self.assertRaisesRegex(self.infra.CanaryError, "durable"):
+            run.initial()
+        prepare.assert_not_called()
+        self.assertEqual(world.creations, 0)
+        self.assertFalse(world.database.exists())
+
+    def test_pool_access_survives_the_complete_vm_rebuild_without_acl_repair(self):
+        run, world, _, _ = self.canary_world()
+        run.config["resource_pool"] = "canary-pool"
+        world.permission_scope = "pool"
+        run.initial()
+        original = world.database.read_bytes()
+        run.rebuild()
+        evidence = self.infra.read_private_json(run.state / "rebuild-evidence.json")
+        self.assertTrue(evidence["full_rebuild_verified"])
+        self.assertEqual(world.database.read_bytes(), original)
+        self.assertEqual((world.creations, world.destructions), (2, 1))
+        self.assertEqual(self.infra.read_private_json(run.state / "canary.tfvars.json").get("resource_pool"), "canary-pool")
+
+    def test_pool_access_loss_refuses_rebuild_before_vm_destruction(self):
+        run, world, _, _ = self.canary_world()
+        run.initial()
+        world.permission_scope = "none"
+        with self.assertRaisesRegex(self.infra.CanaryError, "durable"):
+            run.rebuild()
+        self.assertEqual(world.destructions, 0)
+        self.assertEqual(self.infra.read_private_json(run.state / "phase.json")["phase"], "initial-proven")
+
+    def test_pool_access_checks_propagation_and_exact_path_grants(self):
+        run, world, _, _ = self.canary_world()
+        run.config["resource_pool"] = "canary-pool"
+        world.permission_scope = "pool"
+        self.assertTrue(hasattr(run.api, "require_rebuild_access"), "durable access preflight is missing")
+        run.api.require_rebuild_access(run.config)
+        scope = "/pool/canary-pool"
+        granted = world.proxmox("/access/permissions?" + urlencode({"path": scope}))[scope]
+        for permissions in (
+            {key: 0 for key in granted},
+            granted | {"VM.Config.Disk": 0},
+            {key: value for key, value in granted.items() if key != "Pool.Audit"},
+        ):
+            world.permission_overrides[scope] = permissions
+            with self.assertRaisesRegex(self.infra.CanaryError, "durable"):
+                run.api.require_rebuild_access(run.config)
+        world.permission_overrides.clear()
+        for scope in ("/vms/987600", "/storage/test-storage", "/sdn/zones/localnetwork/vmbr90"):
+            world.permission_overrides[scope] = {}
+            with self.subTest(scope=scope):
+                with self.assertRaises(self.infra.CanaryError):
+                    run.api.require_rebuild_access(run.config)
+            world.permission_overrides.clear()
+
+    def test_pool_access_accepts_legacy_guest_monitor_privilege(self):
+        run, world, _, _ = self.canary_world()
+        self.assertTrue(hasattr(run.api, "require_rebuild_access"), "durable access preflight is missing")
+        permissions = world.proxmox("/access/permissions?path=%2Fvms")["/vms"]
+        del permissions["VM.GuestAgent.Audit"]
+        del permissions["VM.GuestAgent.FileRead"]
+        world.permission_overrides["/vms"] = permissions | {"VM.Monitor": 1}
+        run.api.require_rebuild_access(run.config)
+
+    def test_pool_scope_rejects_foreign_members_and_child_pools_before_nas(self):
+        run, world, prepare, _ = self.canary_world()
+        run.config["resource_pool"] = "canary-pool"
+        world.permission_scope = "pool"
+        world.pool_members_override = [{"type": "qemu", "vmid": 200, "node": "test-pve"}]
+        with self.assertRaisesRegex(self.infra.CanaryError, "pool"):
+            run.initial()
+        prepare.assert_not_called()
+        world.pool_members_override = None
+        world.pool_child = True
+        with self.assertRaisesRegex(self.infra.CanaryError, "pool"):
+            run.initial()
+        prepare.assert_not_called()
+
+    def test_pool_live_ownership_requires_actual_membership(self):
+        run, world, _, _ = self.canary_world()
+        run.config["resource_pool"] = "canary-pool"
+        world.permission_scope = "pool"
+        world.live, world.creations = True, 1
+        run.api.owned_vm(run.config)
+        world.pool_members_override = []
+        with self.assertRaisesRegex(self.infra.CanaryError, "pool"):
+            run.api.owned_vm(run.config)
+
     def test_rebuild_never_prepares_nas_as_fallback_or_destroys_on_binding_change(self):
         run, world, prepare, verify = self.canary_world()
         run.initial()
@@ -760,6 +890,15 @@ class TerraformRootTests(unittest.TestCase):
         self.assertRegex(source, r'memory\s*=\s*4096')
         self.assertRegex(source, r'pci_devices\s*=\s*\[\]')
         self.assertRegex(source, r'usb_devices\s*=\s*\[\]')
+
+    def test_pool_is_forwarded_and_correct_scoped_checks_replace_root_advisory(self):
+        source = (ROOT / "main.tf").read_text()
+        self.assertRegex(source, r'resource_pool\s*=\s*var\.resource_pool')
+        self.assertRegex(source, r'pm_minimum_permission_check\s*=\s*false')
+        module = ROOT.parents[1] / "modules" / "vm"
+        self.assertRegex((module / "main.tf").read_text(), r'pool\s*=\s*var\.resource_pool')
+        for variables in (ROOT / "variables.tf", module / "variables.tf"):
+            self.assertRegex(variables.read_text(), r'(?s)variable "resource_pool" \{[^}]*default\s*=\s*null')
 
 
 class StorageProofTests(PrivateFilesTest):
@@ -1108,6 +1247,10 @@ class OfflineWorld:
         self.objects = {}
         self.result = None
         self.csi_config = {}
+        self.permission_scope = "global"
+        self.permission_overrides = {}
+        self.pool_members_override = None
+        self.pool_child = False
         from nas import NasConfig
         nas_config = NasConfig(
             **config["nas"], fixture_id=config["fixture_id"], initiator_ip="198.51.100.10"
@@ -1139,9 +1282,43 @@ class OfflineWorld:
         return {
             "vmid": self.config["vm_id"], "name": self.infra.node_name(self.config),
             "target_node": self.config["target_node"], "tags": self.infra.VM_TAG,
+            "pool": self.config.get("resource_pool"),
         }
 
     def proxmox(self, path):
+        if path.startswith("/access/permissions?"):
+            scope = parse_qs(urlsplit(path).query)["path"][0]
+            if scope in self.permission_overrides:
+                return {scope: self.permission_overrides[scope].copy()}
+            vm_permissions = {key: 1 for key in (
+                "VM.Allocate", "VM.Audit", "VM.PowerMgmt", "VM.Config.CDROM",
+                "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Disk",
+                "VM.Config.HWType", "VM.Config.Memory", "VM.Config.Network",
+                "VM.Config.Options", "VM.GuestAgent.Audit", "VM.GuestAgent.FileRead",
+            )}
+            if scope == "/vms" and self.permission_scope == "global":
+                return {scope: vm_permissions}
+            if scope == "/pool/" + str(self.config.get("resource_pool")) and self.permission_scope == "pool":
+                return {scope: vm_permissions | {"Pool.Audit": 1}}
+            if scope == "/vms/" + str(self.config["vm_id"]) and self.permission_scope == "vm" and not self.destructions:
+                return {scope: {key: 0 for key in vm_permissions}}
+            if scope == "/vms/987600":
+                return {scope: {"VM.Clone": 0, "VM.Audit": 0}}
+            if scope.startswith("/storage/"):
+                return {scope: {"Datastore.AllocateSpace": 0, "Datastore.Audit": 0}}
+            if scope.startswith("/sdn/zones/localnetwork/"):
+                return {scope: {"SDN.Use": 0}}
+            return {scope: {"VM.Audit": 1}}
+        if path.startswith("/pools"):
+            pool = self.config.get("resource_pool")
+            if "?" not in path:
+                return [{"poolid": pool}] + ([{"poolid": pool + "/foreign"}] if self.pool_child else [])
+            members = [] if not self.live else [{
+                "type": "qemu", "vmid": self.config["vm_id"], "node": self.config["target_node"],
+            }]
+            if self.pool_members_override is not None:
+                members = self.pool_members_override
+            return [{"poolid": pool, "members": members}]
         if path.startswith("/cluster/resources"):
             inventory = [{
                 "vmid": 987600, "name": self.config["template_name"],

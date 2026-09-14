@@ -21,6 +21,16 @@ variable "target_node" {
   description = "Explicit Proxmox node containing the template."
 }
 
+variable "resource_pool" {
+  type        = string
+  default     = null
+  description = "Existing flat, canary-only permissions pool retained across VM deletion."
+  validation {
+    condition     = var.resource_pool == null ? true : can(regex("^[A-Za-z][A-Za-z0-9_.-]{0,99}$", var.resource_pool))
+    error_message = "Use a flat resource pool name starting with a letter, or null."
+  }
+}
+
 variable "template_name" {
   type        = string
   description = "Explicit clean cloud-init template; not the production root manifest."

@@ -89,6 +89,19 @@ python:3.13-slim@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999
   creation/deletion and guest-agent **file reads**. The caller reads only
   `/var/lib/cloud/instance/boot-finished` and
   `/etc/ssh/ssh_host_ed25519_key.pub` for SSH trust. It does not use guest exec.
+- Prefer a pre-created, empty, flat **Proxmox resource pool** selected with
+  `resource_pool`. This is a permissions group, not `os_storage` or the NAS pool.
+  Give the token propagated VM allocation/configuration/power/audit/guest-file
+  rights and `Pool.Audit` there (for example, `PVEVMAdmin` plus `PVEPoolUser`);
+  keep template clone rights, datastore allocation and bridge-use permissions
+  separately scoped. The pool must contain no child pools or other members.
+  Native cloning assigns the new VM directly to it; the runtime needs
+  neither `Pool.Allocate` nor permission-management rights.
+  Keep this pool outside the single-VM Terraform destroy root: Proxmox removes
+  per-VM ACLs on deletion, regardless of its purge option, but retains pool ACLs.
+  Do not repair VM ACLs manually between generations. Omitting `resource_pool`
+  preserves the old VM/module defaults, but requires durable propagated VM
+  rights on the parent `/vms` path rather than an ACL only on the disposable ID.
 - NAS administrative setup rights as required by `nas.py`, explicitly selected
   existing pool/portal settings, and a routed iSCSI data plane. NAS service
   startup is refused unless separately opted into with `allow_service_start`.
@@ -143,6 +156,16 @@ The example intentionally contains no runnable VM ID/IP defaults or secrets.
 Use absolute, canonical paths without whitespace or symlinks. The SSH private
 key and operator JSON must be operator-owned, mode 0600 or stricter.
 `fixture_id` is 1–32 lowercase letters/digits/interior hyphens.
+
+The caller checks the **actual token's** effective permissions before initial
+NAS setup and again before rebuild destruction. Proxmox's permission-map values
+are propagation flags, not grant/deny booleans: exact-path clone/storage/network
+rights may be non-propagating, while the VM's pool/parent rights must propagate.
+Only the canary provider's root-wide *parent-user* advisory permission check is
+disabled in favor of these scoped checks. Native API authorization, verified
+TLS, exact plan/state/live ownership checks and the single-VM boundary remain
+enforced. Production provider configuration and the shared module's defaults
+are unchanged.
 
 `nas.url` must be an **HTTPS origin**, for example
 `https://nas.example.invalid` or `https://nas.example.invalid:443`.
