@@ -39,7 +39,7 @@ jobs:
         with:
           terraform_version: '1.16.1'
           terraform_wrapper: false
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v3.19.4
       - uses: actions/setup-python@v6
