@@ -910,9 +910,32 @@ class StorageProofTests(PrivateFilesTest):
         pvc["metadata"]["uid"] = "new-pvc-uid"
         pv["spec"]["claimRef"]["uid"] = "new-pvc-uid"
         self.proof.validate_live_binding(self.config, self.connection, pv, pvc)
+        del pv["spec"]["storageClassName"]
+        self.proof.validate_live_binding(self.config, self.connection, pv, pvc)
+        self.assertNotIn("storageClassName", pv["spec"])
         pv["spec"]["csi"]["volumeAttributes"]["iqn"] += "-changed"
         with self.assertRaises(self.proof.CanaryError):
             self.proof.validate_live_binding(self.config, self.connection, pv, pvc)
+
+    def test_runtime_binding_rejects_changed_or_unset_storage_class(self):
+        for kind, class_fields in (
+            ("pv", {"storageClassName": "local-path"}),
+            ("pv", {"storageClassName": None}),
+            ("pvc", {}),
+            ("pvc", {"storageClassName": None}),
+            ("pvc", {"storageClassName": "local-path"}),
+        ):
+            with self.subTest(kind=kind, class_fields=class_fields):
+                pv, pvc = self.proof.binding_objects(self.config, self.connection)
+                pv["status"] = pvc["status"] = {"phase": "Bound"}
+                pvc["metadata"]["uid"] = "new-pvc-uid"
+                pv["spec"]["claimRef"]["uid"] = "new-pvc-uid"
+                del pv["spec"]["storageClassName"]
+                spec = pv["spec"] if kind == "pv" else pvc["spec"]
+                spec.pop("storageClassName", None)
+                spec.update(class_fields)
+                with self.assertRaisesRegex(self.proof.CanaryError, "live binding differs"):
+                    self.proof.validate_live_binding(self.config, self.connection, pv, pvc)
 
     def test_deployment_process_boundary_uses_only_node_chart_and_static_objects(self):
         self.assertTrue(hasattr(self.proof, "ClusterProof"), "cluster proof runner is not implemented")

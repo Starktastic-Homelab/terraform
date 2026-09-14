@@ -1,7 +1,7 @@
 # Disposable VM + full K3s iSCSI rebuild canary
 
-**Authoring/validation only so far. No live recovery result is claimed.** Runtime
-proof requires an operator-approved execution against an explicitly reserved
+**Offline validation is not live recovery proof.** Runtime proof requires an
+operator-approved execution against an explicitly reserved
 canary VM and a marked, synthetic NAS fixture.
 
 This is a separate Terraform root. It calls `../../modules/vm` once, as
@@ -26,7 +26,9 @@ Use the caller below, **not raw Terraform apply/destroy**.
 5. Statically bind an ext4, 4Gi `ReadWriteOncePod` PV/PVC with `Retain`.
    Both objects carry the separate Argo sync options `Prune=false` and
    `Delete=false` in Argo's single supported `sync-options` annotation.
-   No desired declaration includes a live PVC UID.
+   No desired declaration includes a live PVC UID. Live validation accepts the
+   API omitting the PV's empty `storageClassName`, but the PVC must retain its
+   explicit empty class; an unset PVC class is not equivalent.
 6. Exclusively create a real SQLite database with an unpredictable nonce.
    Commit, checkpoint, close and fsync before recording its SHA256 outside the
    cluster. The pod continues holding the claim without leaving SQLite open.
