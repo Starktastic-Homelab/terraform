@@ -1,0 +1,30 @@
+{
+  "fixture_id": "REQUIRED_UNIQUE_FIXTURE_ID",
+  "vm_id": "REPLACE_WITH_UNUSED_INTEGER_VM_ID",
+  "target_node": "REQUIRED_PROXMOX_NODE",
+  "template_name": "REQUIRED_CLEAN_CLOUD_INIT_TEMPLATE",
+  "management_cidr": "REQUIRED_UNUSED_MANAGEMENT_IPV4/PREFIX",
+  "storage_cidr": "REQUIRED_UNUSED_STORAGE_IPV4/PREFIX",
+  "management_gateway": null,
+  "storage_gateway": "REQUIRED_STORAGE_GATEWAY_IPV4",
+  "management_bridge": "REQUIRED_MANAGEMENT_BRIDGE",
+  "storage_bridge": "REQUIRED_STORAGE_BRIDGE",
+  "nameserver": "REQUIRED_DNS_IPV4",
+  "ciuser": "REQUIRED_TEMPLATE_USER",
+  "ssh_public_key_file": "/absolute/private/operator/id_ed25519.pub",
+  "ssh_private_key_file": "/absolute/private/operator/id_ed25519",
+  "cloudinit_storage": "REQUIRED_CLOUD_INIT_STORAGE",
+  "os_storage": "REQUIRED_DISPOSABLE_OS_STORAGE",
+  "ansible_checkout": "/absolute/path/to/approved/ansible-checkout",
+  "ansible_runtime_dir": null,
+  "proxmox_ca_file": null,
+  "flannel_iface": "eth1",
+  "nas": {
+    "url": "https://nas.example.invalid",
+    "pool": "REQUIRED_NAS_POOL",
+    "portal_ip": "REQUIRED_NAS_STORAGE_IPV4",
+    "ca_file": null,
+    "portal_id": null,
+    "allow_service_start": false
+  }
+}

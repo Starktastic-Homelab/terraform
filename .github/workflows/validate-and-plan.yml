@@ -7,6 +7,9 @@ on:
     paths-ignore:
       - 'README.md'
       - 'renovate.json'
+      - 'canaries/**'
+      - '.github/workflows/validate-canary.yml'
+      - '.github/workflows/validate-and-plan.yml'
 
 env:
   PM_API_URL: ${{ secrets.PM_API_URL }}

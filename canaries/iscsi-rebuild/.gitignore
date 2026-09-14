@@ -1,0 +1,10 @@
+.state/
+.checks/
+__pycache__/
+config.*.json
+!config.example.json
+*.tfvars
+*.tfvars.json
+*.tfplan
+kubeconfig
+*.pyc

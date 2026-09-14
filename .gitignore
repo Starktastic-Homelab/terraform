@@ -31,3 +31,6 @@ terraform.rc
 
 # Local Git worktrees
 .worktrees/
+
+# Short, private Ansible controller runtime; AF_UNIX has a 107-byte path limit.
+/.ar/

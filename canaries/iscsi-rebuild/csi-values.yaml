@@ -1,0 +1,45 @@
+csiDriver:
+  name: org.democratic-csi.iscsi-rebuild-canary
+  version: 1.5.0
+  attachRequired: false
+
+driver:
+  config:
+    driver: node-manual
+
+controller:
+  enabled: false
+  externalAttacher:
+    enabled: false
+  externalProvisioner:
+    enabled: false
+  externalResizer:
+    enabled: false
+  externalSnapshotter:
+    enabled: false
+  externalHealthMonitorController:
+    enabled: false
+  driver:
+    image:
+      tag: v1.9.5
+
+node:
+  kubeletHostPath: /var/lib/kubelet
+  driver:
+    image:
+      registry: ghcr.io/democratic-csi/democratic-csi
+      tag: v1.9.5
+    logLevel: error
+    # v1.9.5's iscsiadm wrapper uses the existing /host root mount, including
+    # the host initiator identity and iscsid socket. node-manual has no
+    # automatic /etc/iscsi mount in chart 0.15.1.
+    extraEnv:
+      - name: FILESYSTEM_TYPE_DETECTION_STRATEGY
+        value: blkid
+      - name: ISCSIADM_HOST_STRATEGY
+        value: chroot
+      - name: ISCSIADM_HOST_PATH
+        value: /usr/sbin/iscsiadm
+
+storageClasses: []
+volumeSnapshotClasses: []

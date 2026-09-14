@@ -22,6 +22,7 @@
 - [VM Module](#vm-module)
 - [Packer Integration](#packer-integration)
 - [State Management](#state-management)
+- [Isolated iSCSI Rebuild Canary](#isolated-iscsi-rebuild-canary)
 - [CI/CD Automation](#cicd-automation)
 - [Prerequisites](#prerequisites)
 - [Usage](#usage)
@@ -157,6 +158,17 @@ Terraform state is stored in an **S3-compatible backend**, keeping state off loc
 | **Bucket** | `terraform-state` |
 | **Key** | `terraform.tfstate` |
 | **Locking** | Implicit via CI (single runner) |
+
+---
+
+## Isolated iSCSI Rebuild Canary
+
+The optional [full-VM iSCSI rebuild canary](canaries/iscsi-rebuild/README.md)
+uses a separate local-state Terraform root and an explicitly confirmed,
+disposable single-node K3s cluster. It does not use the production backend,
+inventory or bootstrap. Its real SQLite recovery proof requires a companion
+Ansible entry point and operator execution; **offline validation is not a live
+recovery result**. VM-only cleanup retains the marked synthetic NAS fixture.
 
 ---
 
