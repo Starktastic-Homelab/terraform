@@ -42,7 +42,7 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.19.4
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Test real SQLite and mocked API/process boundaries
