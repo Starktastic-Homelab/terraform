@@ -367,6 +367,25 @@ class InfrastructureTests(PrivateFilesTest):
         self.assertLess(len(str(relative / "plugin-12345678901234567890").encode()), 108)
         self.assertEqual((ROOT / relative).stat().st_mode & 0o077, 0)
 
+    def test_failed_process_output_is_private_and_not_in_the_error(self):
+        runner = self.infra.Runner(self.work, self.work / "generation-1")
+        result = subprocess.CompletedProcess(
+            ["ansible-playbook"], 4, "synthetic-private-stdout", "synthetic-private-stderr"
+        )
+        with mock.patch("subprocess.run", return_value=result):
+            with self.assertRaises(self.infra.CanaryError) as failure:
+                runner.run(["ansible-playbook", "canary.yml"])
+        self.assertNotIn(result.stdout, str(failure.exception))
+        self.assertNotIn(result.stderr, str(failure.exception))
+        files = list(runner.generation.glob("process-failure-*.json"))
+        self.assertEqual(len(files), 1, "Failed process output must remain available for private diagnosis")
+        self.assertEqual(files[0].stat().st_mode & 0o777, 0o600)
+        self.assertIn(str(files[0]), str(failure.exception))
+        self.assertEqual(self.infra.read_private_json(files[0]), {
+            "program": "ansible-playbook", "returncode": 4,
+            "stdout": result.stdout, "stderr": result.stderr,
+        })
+
     def test_ansible_inventory_has_one_node_no_production_inventory_or_bootstrap(self):
         runner = self.infra.Runner(self.work, self.work / "generation-1")
         inventory, variables = self.infra.ansible_inputs(self.config, runner, "iqn.2026-09.invalid:unit-proof")

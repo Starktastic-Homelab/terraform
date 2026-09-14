@@ -496,7 +496,12 @@ class Runner:
         except (OSError, subprocess.TimeoutExpired):
             raise CanaryError(f"{Path(argv[0]).name} could not finish; command output suppressed") from None
         if result.returncode:
-            raise CanaryError(f"{Path(argv[0]).name} failed (exit {result.returncode}); output suppressed to protect credentials")
+            failure = self.generation / ("process-failure-" + uuid.uuid4().hex + ".json")
+            save_private_json(failure, {
+                "program": Path(argv[0]).name, "returncode": result.returncode,
+                "stdout": result.stdout, "stderr": result.stderr,
+            })
+            raise CanaryError(f"{Path(argv[0]).name} failed (exit {result.returncode}); private output saved to {failure}")
         return result.stdout
 
     def kubectl(self, *args, input_text=None, timeout=900):

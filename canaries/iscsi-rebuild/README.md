@@ -189,6 +189,9 @@ command argument, PR comments or CI artifacts. The caller captures/suppresses
 process output rather than printing potentially sensitive logs. Subprocesses
 inherit neither production KUBECONFIG, Terraform CLI arguments/TF_VAR overrides,
 Ansible/vault settings, nor NAS credentials.
+Completed nonzero commands retain stdout/stderr in a generation-specific
+`process-failure-<uuid>.json`, mode 0600. Treat this diagnostic file as secret:
+never publish it or include it in CI artifacts.
 
 Default CA trust is verified. For private issuers, set `proxmox_ca_file` and/or
 `nas.ca_file` to trusted PEM CA files. The provider uses `SSL_CERT_FILE` for the
@@ -236,6 +239,8 @@ Every phase remains under `.state/<fixture_id>/`, mode 0700, with generation-1
 and generation-2 subdirectories. Preserve `first-evidence.json`,
 `node-identity.json`, `phase.json` and `failure.json` for sanitized diagnosis.
 Keep `nas.json` (which contains CHAP), plan files, kubeconfig and tfstate private.
+Keep any `process-failure-*.json` private as well; the terminal error reports
+its path, not its contents.
 Back up expected evidence and NAS ownership state securely **outside** the cluster.
 Losing the expected nonce/hash means there is no valid recovery proof.
 
