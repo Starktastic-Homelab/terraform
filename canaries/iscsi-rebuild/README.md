@@ -1,7 +1,7 @@
 # Disposable VM + full K3s iSCSI rebuild canary
 
-**Authoring/validation only so far. No live recovery result is claimed.** Runtime
-proof requires an operator-approved execution against an explicitly reserved
+**Offline validation is not live recovery proof.** Runtime proof requires an
+operator-approved execution against an explicitly reserved
 canary VM and a marked, synthetic NAS fixture.
 
 This is a separate Terraform root. It calls `../../modules/vm` once, as
@@ -26,7 +26,9 @@ Use the caller below, **not raw Terraform apply/destroy**.
 5. Statically bind an ext4, 4Gi `ReadWriteOncePod` PV/PVC with `Retain`.
    Both objects carry the separate Argo sync options `Prune=false` and
    `Delete=false` in Argo's single supported `sync-options` annotation.
-   No desired declaration includes a live PVC UID.
+   No desired declaration includes a live PVC UID. Live validation accepts the
+   API omitting the PV's empty `storageClassName`, but the PVC must retain its
+   explicit empty class; an unset PVC class is not equivalent.
 6. Exclusively create a real SQLite database with an unpredictable nonce.
    Commit, checkpoint, close and fsync before recording its SHA256 outside the
    cluster. The pod continues holding the claim without leaving SQLite open.
@@ -87,6 +89,19 @@ python:3.13-slim@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999
   creation/deletion and guest-agent **file reads**. The caller reads only
   `/var/lib/cloud/instance/boot-finished` and
   `/etc/ssh/ssh_host_ed25519_key.pub` for SSH trust. It does not use guest exec.
+- Prefer a pre-created, empty, flat **Proxmox resource pool** selected with
+  `resource_pool`. This is a permissions group, not `os_storage` or the NAS pool.
+  Give the token propagated VM allocation/configuration/power/audit/guest-file
+  rights and `Pool.Audit` there (for example, `PVEVMAdmin` plus `PVEPoolUser`);
+  keep template clone rights, datastore allocation and bridge-use permissions
+  separately scoped. The pool must contain no child pools or other members.
+  Native cloning assigns the new VM directly to it; the runtime needs
+  neither `Pool.Allocate` nor permission-management rights.
+  Keep this pool outside the single-VM Terraform destroy root: Proxmox removes
+  per-VM ACLs on deletion, regardless of its purge option, but retains pool ACLs.
+  Do not repair VM ACLs manually between generations. Omitting `resource_pool`
+  preserves the old VM/module defaults, but requires durable propagated VM
+  rights on the parent `/vms` path rather than an ACL only on the disposable ID.
 - NAS administrative setup rights as required by `nas.py`, explicitly selected
   existing pool/portal settings, and a routed iSCSI data plane. NAS service
   startup is refused unless separately opted into with `allow_service_start`.
@@ -142,6 +157,16 @@ Use absolute, canonical paths without whitespace or symlinks. The SSH private
 key and operator JSON must be operator-owned, mode 0600 or stricter.
 `fixture_id` is 1–32 lowercase letters/digits/interior hyphens.
 
+The caller checks the **actual token's** effective permissions before initial
+NAS setup and again before rebuild destruction. Proxmox's permission-map values
+are propagation flags, not grant/deny booleans: exact-path clone/storage/network
+rights may be non-propagating, while the VM's pool/parent rights must propagate.
+Only the canary provider's root-wide *parent-user* advisory permission check is
+disabled in favor of these scoped checks. Native API authorization, verified
+TLS, exact plan/state/live ownership checks and the single-VM boundary remain
+enforced. Production provider configuration and the shared module's defaults
+are unchanged.
+
 `nas.url` must be an **HTTPS origin**, for example
 `https://nas.example.invalid` or `https://nas.example.invalid:443`.
 Do not append `/api/v2.0` or another path; the NAS module builds API paths itself.
@@ -164,6 +189,9 @@ command argument, PR comments or CI artifacts. The caller captures/suppresses
 process output rather than printing potentially sensitive logs. Subprocesses
 inherit neither production KUBECONFIG, Terraform CLI arguments/TF_VAR overrides,
 Ansible/vault settings, nor NAS credentials.
+Completed nonzero commands retain stdout/stderr in a generation-specific
+`process-failure-<uuid>.json`, mode 0600. Treat this diagnostic file as secret:
+never publish it or include it in CI artifacts.
 
 Default CA trust is verified. For private issuers, set `proxmox_ca_file` and/or
 `nas.ca_file` to trusted PEM CA files. The provider uses `SSL_CERT_FILE` for the
@@ -211,6 +239,8 @@ Every phase remains under `.state/<fixture_id>/`, mode 0700, with generation-1
 and generation-2 subdirectories. Preserve `first-evidence.json`,
 `node-identity.json`, `phase.json` and `failure.json` for sanitized diagnosis.
 Keep `nas.json` (which contains CHAP), plan files, kubeconfig and tfstate private.
+Keep any `process-failure-*.json` private as well; the terminal error reports
+its path, not its contents.
 Back up expected evidence and NAS ownership state securely **outside** the cluster.
 Losing the expected nonce/hash means there is no valid recovery proof.
 

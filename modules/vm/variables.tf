@@ -13,6 +13,12 @@ variable "target_node" {
   description = "Target Proxmox node for the VM"
 }
 
+variable "resource_pool" {
+  type        = string
+  default     = null
+  description = "Optional existing Proxmox resource pool, distinct from disk storage"
+}
+
 variable "clone" {
   type        = string
   description = "Name of the base VM/template to clone"

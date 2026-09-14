@@ -203,6 +203,8 @@ def validate_live_binding(config, connection, pv, pvc):
     if not pvc.get("metadata", {}).get("uid") or claim.get("uid") != pvc["metadata"]["uid"]:
         raise CanaryError("live PV is not bound to this generation's PVC")
     actual_pv["claimRef"] = {key: claim.get(key) for key in ("name", "namespace")}
+    # The API omits an empty PV class; an unset PVC class is not equivalent.
+    actual_pv.setdefault("storageClassName", "")
     if actual_pv != wanted_pv["spec"] or pvc.get("spec") != wanted_pvc["spec"]:
         raise CanaryError("live binding differs from the retained static declarations")
     for actual, wanted in ((pv, wanted_pv), (pvc, wanted_pvc)):
