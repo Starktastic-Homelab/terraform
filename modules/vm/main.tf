@@ -9,7 +9,6 @@ resource "proxmox_vm_qemu" "vm" {
   vmid               = var.vm_id
   name               = var.name
   target_node        = var.target_node
-  pool               = var.resource_pool
   clone              = var.clone
   scsihw             = var.scsihw
   boot               = "order=virtio0"
