@@ -37,7 +37,7 @@ jobs:
           echo "TMPDIR=$GITHUB_WORKSPACE/canaries/iscsi-rebuild/.checks/build" >> "$GITHUB_ENV"
       - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: '1.16.1'
+          terraform_version: '1.16.2'
           terraform_wrapper: false
       - uses: azure/setup-helm@v4
         with:
