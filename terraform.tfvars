@@ -4,7 +4,7 @@ master_memory = 16384
 
 worker_count  = 2
 worker_cores  = 6
-worker_memory = 28672
+worker_memory = 20480
 
 os_disk_size = "96G"
 
