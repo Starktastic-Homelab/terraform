@@ -4,12 +4,7 @@ master_memory = 16384
 
 worker_count  = 2
 worker_cores  = 6
-worker_memory = 28672
-
-# Temporary lab capacity, stage 1: resize only worker-01 during maintenance.
-worker_memory_overrides = {
-  "201" = 20480
-}
+worker_memory = 20480
 
 os_disk_size = "96G"
 

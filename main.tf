@@ -55,7 +55,7 @@ module "worker_nodes" {
   clone       = var.base_vm_name
 
   cores  = var.worker_cores
-  memory = lookup(var.worker_memory_overrides, tostring(var.start_vm_id + var.master_count + count.index), var.worker_memory)
+  memory = var.worker_memory
 
   ciuser  = var.username
   sshkeys = var.ssh_pub_key
