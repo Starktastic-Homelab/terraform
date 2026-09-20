@@ -241,6 +241,15 @@ terraform apply
 
 > In practice, all operations run via CI. The `validate-and-plan` workflow posts a plan preview on every PR, and `apply` runs automatically on merge.
 
+For staged worker RAM changes, `worker_memory_overrides` accepts a map from VM ID
+to memory in MiB; workers without an entry retain `worker_memory`. Change one
+worker per PR and require a plan with only that VM's in-place memory update.
+Merge during its maintenance window after targeted workload preservation and
+drain; memory changes can restart the guest. Keep the infrastructure runner up
+through apply and downstream Ansible. Remove an override in a separate reviewed
+PR to restore the shared default. The existing cluster-wide drain mode is not
+the targeted maintenance procedure.
+
 ---
 
 ## License & Contributing

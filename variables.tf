@@ -57,6 +57,21 @@ variable "worker_memory" {
   description = "Memory in MB for worker nodes"
 }
 
+variable "worker_memory_overrides" {
+  type        = map(number)
+  default     = {}
+  nullable    = false
+  description = "Optional worker memory in MiB keyed by VM ID; other workers use worker_memory"
+
+  validation {
+    condition = alltrue([
+      for vm_id, memory in var.worker_memory_overrides :
+      can(regex("^[1-9][0-9]*$", vm_id)) && try(memory > 0 && floor(memory) == memory, false)
+    ])
+    error_message = "Worker memory overrides must use numeric VM IDs and positive whole MiB values."
+  }
+}
+
 variable "cloudinit_storage" {
   type        = string
   default     = "local-zfs"
