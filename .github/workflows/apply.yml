@@ -101,6 +101,10 @@ jobs:
     container:
       image: amazon/aws-cli:latest
     steps:
+      # Checkout falls back to a compressed archive because this image has no Git.
+      - name: Install checkout archive tools
+        run: dnf install -y tar gzip
+
       - name: Checkout repository
         uses: actions/checkout@v7
 
