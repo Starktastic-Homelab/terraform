@@ -246,3 +246,26 @@ terraform apply
 ## License & Contributing
 
 This is a personal homelab project. Feel free to use it as inspiration for your own infrastructure. If you spot an issue or have a suggestion, [open an issue](../../issues) — contributions and feedback are welcome.
+
+## Storage-safe maintenance coordination
+
+The companion Ansible maintenance PR must be merged and VM300's shared lock
+bootstrap qualified before this workflow is enabled. `apply.yml` pins the same
+Ansible helper used by Apps/Ansible and bind-mounts
+`/var/lib/homelab-maintenance:/maintenance`. A missing runner marker blocks all
+VM mutations. Normal, drain and destroy modes run under one persistent owner;
+failed plan downloads cannot reach mutation. Drain, apply and uncordon share a
+single job, avoiding cross-job secret-output loss. Ownership is rechecked before
+every infrastructure command. Only successful recovery releases it, before
+Ansible dispatch acquires its own operation.
+
+Failure/cancellation leaves the operation record on VM300. Inspect the owning
+run and exact stage, stop concurrent GUI actions, and reconcile actual VM and
+writer state before explicitly releasing as the original owner. Never clear a
+lock on a timer or rerun apply to take over. A lock protects participating tools;
+it cannot constrain a Proxmox administrator using the GUI. Review current writer
+holds and generation-retirement evidence before replacing an iSCSI worker.
+
+Offline behavioral checks (with the pinned Ansible helper on `PYTHONPATH`):
+`python3 scripts/tests/test-maintenance-workflow.py`. These use fake executables,
+not live Terraform state; real cross-container locking remains a deployment gate.

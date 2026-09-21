@@ -15,6 +15,10 @@ env:
   KUBECONFIG: /tmp/kubeconfig
   KUBECTL_KUBERC: "false"
 
+concurrency:
+  group: terraform-apply
+  cancel-in-progress: false
+
 jobs:
   check-conditions:
     runs-on: ubuntu-latest
@@ -97,6 +101,9 @@ jobs:
     container:
       image: amazon/aws-cli:latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Download Terraform plan and exitcode from S3
         uses: ./.github/actions/s3-cp
         with:
@@ -116,183 +123,92 @@ jobs:
             plan.tfplan
             plan.exitcode
 
-  pre-apply:
-    name: Drain cluster nodes
-    needs: [check-conditions, download-plan]
-    if: |
-      !cancelled()
-        && needs.check-conditions.outputs.should_run == 'true'
-        && needs.check-conditions.outputs.apply_mode == 'drain'
-    runs-on: self-hosted
-    container:
-      image: bitnami/kubectl:latest
-    env:
-      KUBECONFIG: /tmp/kubeconfig
-    steps:
-      - name: Setup Kubeconfig
-        run: |
-          echo "${{ secrets.KUBECONFIG_RAW }}" > /tmp/kubeconfig
-          chmod 600 /tmp/kubeconfig
-
-      - name: Drain all nodes
-        run: |
-          MASTERS=""
-          WORKERS=""
-          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-            if kubectl get node "$node" -o jsonpath='{.metadata.labels}' | grep -qE '"node-role.kubernetes.io/(master|control-plane)"'; then
-              MASTERS="$MASTERS $node"
-            else
-              WORKERS="$WORKERS $node"
-            fi
-          done
-
-          for node in $WORKERS $MASTERS; do
-            echo "⏸️ Cordoning $node..."
-            kubectl cordon "$node"
-          done
-
-          for node in $WORKERS; do
-            echo "🔄 Draining worker $node..."
-            kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --disable-eviction --timeout=120s
-          done
-
-          for node in $MASTERS; do
-            echo "🔄 Draining master $node..."
-            kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --disable-eviction --timeout=120s
-          done
-
   apply:
-    name: Terraform apply
-    needs: [check-conditions, download-plan, pre-apply]
-    if: |
-      !cancelled()
-        && needs.check-conditions.outputs.should_run == 'true'
-        && (needs.pre-apply.result == 'success' || needs.pre-apply.result == 'skipped')
-        && (needs.download-plan.result == 'success' || needs.download-plan.result == 'skipped')
+    name: Locked drain, apply and recovery
+    needs: [check-conditions, download-plan]
+    if: >-
+      !cancelled() && needs.check-conditions.outputs.should_run == 'true'
+      && (needs.download-plan.result == 'success'
+      || (needs.download-plan.result == 'skipped'
+      && (needs.check-conditions.outputs.apply_mode == 'destroy' || github.event_name == 'workflow_dispatch')))
     runs-on: self-hosted
     container:
-      image: hashicorp/terraform:latest
+      image: python:trixie
+      volumes:
+        - /var/lib/homelab-maintenance:/maintenance
     outputs:
-      has_changes: ${{ steps.check.outputs.has_changes }}
+      has_changes: ${{ steps.apply.outputs.has_changes }}
+    env:
+      HOMELAB_RUNNER_INSTANCE: cc1aeeb7-4827-466c-9d4b-5dc6c881f193
+      MAINTENANCE_OWNER: ${{ github.repository }}/${{ github.run_id }}/${{ github.run_attempt }}
+      PYTHONPATH: ${{ github.workspace }}/maintenance-helper/scripts
+      APPLY_MODE: ${{ needs.check-conditions.outputs.apply_mode }}
+      EVENT_NAME: ${{ github.event_name }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
+      PM_API_URL: ${{ secrets.PM_API_URL }}
+      PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
+      PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
+      TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Read manifest file
-        run: |
-          echo 'manifest<<EOF' >> $GITHUB_ENV
-          cat packer-manifest.json >> $GITHUB_ENV
-          echo -e '\nEOF' >> $GITHUB_ENV
+      - name: Checkout reviewed maintenance helper
+        uses: actions/checkout@v7
+        with:
+          repository: Starktastic-Homelab/ansible
+          ref: 887269798650e88fed791bb4f22a47bf50ad17be
+          path: maintenance-helper
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Setup Kubectl
+        uses: azure/setup-kubectl@v5.1.0
 
       - name: Download Terraform plan artifact
-        if: needs.check-conditions.outputs.apply_mode != 'destroy' && github.event_name == 'pull_request_target'
+        if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
         uses: actions/download-artifact@v8
         with:
           name: tfplan
 
-      - name: Check for changes
-        id: check
-        run: |
-          HAS_CHANGES="true"
-
-          if [[ "${{ needs.check-conditions.outputs.apply_mode }}" == "destroy" ]]; then
-            echo "💣 Destroy mode — changes implied."
-          elif [[ -f "plan.exitcode" ]]; then
-            CODE=$(cat plan.exitcode)
-            if [[ "$CODE" == "2" ]]; then
-              HAS_CHANGES="true"
-              echo "⚠️ Changes detected (Exit Code 2)."
-            else
-              HAS_CHANGES="false"
-              echo "✅ No changes (Exit Code $CODE)."
-            fi
-          fi
-
-          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
-
-      - name: Destroy infrastructure
-        if: needs.check-conditions.outputs.apply_mode == 'destroy'
+      - name: Prepare reviewed image and private kubeconfig
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
-          AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
-          PM_API_URL: ${{ secrets.PM_API_URL }}
-          PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
-          PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
-          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
-          TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
+          KUBECONFIG_RAW: ${{ secrets.KUBECONFIG_RAW }}
         run: |
-          terraform init
-          terraform destroy -auto-approve
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          name = json.loads(Path('packer-manifest.json').read_text())['builds'][0]['custom_data']['vm_name']
+          if not name or '\n' in name or '\r' in name:
+              raise ValueError('Invalid image name')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('TF_VAR_base_vm_name=' + name + '\n')
+          fd = os.open(os.environ['KUBECONFIG'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(fd, 'w') as stream:
+              stream.write(os.environ['KUBECONFIG_RAW'])
+          PYTHON
 
-      - name: Apply Terraform
-        if: steps.check.outputs.has_changes == 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
-          AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
-          PM_API_URL: ${{ secrets.PM_API_URL }}
-          PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
-          PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
-          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
-          TF_VAR_base_vm_name: ${{ fromJSON(env.manifest).builds[0].custom_data.vm_name }}
+      - name: Acquire ownership and execute infrastructure operation
+        id: apply
         run: |
-          terraform init
-          if [[ -f "plan.tfplan" ]]; then
-            terraform apply plan.tfplan
+          if [ "$EVENT_NAME" = pull_request_target ] && [ "$APPLY_MODE" != destroy ]; then
+            python3 scripts/maintenance_apply.py --mode "$APPLY_MODE" --saved-plan
           else
-            terraform apply -auto-approve
+            python3 scripts/maintenance_apply.py --mode "$APPLY_MODE"
           fi
-
-  post-apply:
-    name: Uncordon cluster nodes
-    needs: [check-conditions, apply]
-    if: |
-      always()
-        && needs.check-conditions.outputs.apply_mode == 'drain'
-        && needs.check-conditions.outputs.should_run == 'true'
-    runs-on: self-hosted
-    container:
-      image: bitnami/kubectl:latest
-    env:
-      KUBECONFIG: /tmp/kubeconfig
-    steps:
-      - name: Setup Kubeconfig
-        run: |
-          echo "${{ secrets.KUBECONFIG_RAW }}" > /tmp/kubeconfig
-          chmod 600 /tmp/kubeconfig
-
-      - name: Wait for Kubernetes API
-        run: |
-          attempts=0
-          until kubectl get nodes >/dev/null 2>&1; do
-            attempts=$((attempts + 1))
-            if [ "$attempts" -ge 60 ]; then
-              echo "Kubernetes API did not recover within 300 seconds."
-              exit 1
-            fi
-            sleep 5
-          done
-
-      - name: Uncordon all nodes
-        run: |
-          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-            echo "✅ Uncordoning $node..."
-            kubectl uncordon "$node"
-          done
-
-      - name: Wait for nodes to be ready
-        run: kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
   trigger-ansible:
-    name: Trigger Ansible deployment
-    needs: [check-conditions, apply, post-apply]
-    if: |
-      !cancelled()
-        && needs.check-conditions.outputs.should_run == 'true'
-        && needs.apply.result == 'success'
-        && needs.apply.outputs.has_changes == 'true'
-        && (needs.post-apply.result == 'success' || needs.post-apply.result == 'skipped')
+    name: Trigger Ansible after successful lock release
+    needs: [check-conditions, apply]
+    if: >-
+      !cancelled() && needs.apply.result == 'success'
+      && needs.apply.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Ansible Deployment
@@ -304,9 +220,9 @@ jobs:
 
   cleanup:
     name: Cleanup after apply
-    needs: [check-conditions, trigger-ansible, post-apply]
+    needs: [check-conditions, apply, trigger-ansible]
     if: |
-      always()
+      !cancelled() && needs.apply.result == 'success'
         && needs.check-conditions.outputs.should_run == 'true'
         && needs.check-conditions.outputs.apply_mode != 'destroy'
         && github.event_name == 'pull_request_target'
