@@ -287,7 +287,9 @@ resource "proxmox_vm_qemu" "vm" {
 
   lifecycle {
     ignore_changes = [
-      startup_shutdown
+      startup_shutdown,
+      # CSI owns data-disk attachments; Terraform still owns virtio0 and ide2.
+      disks[0].scsi
     ]
   }
 }
