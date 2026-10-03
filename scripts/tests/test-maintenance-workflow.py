@@ -21,6 +21,9 @@ class WorkflowTests(unittest.TestCase):
         self.env=patch.dict(os.environ,{'HOMELAB_RUNNER_INSTANCE':'runner','MAINTENANCE_OWNER':'terraform/test/1'})
         self.env.start();self.addCleanup(self.env.stop)
         self.commands=[];self.fail=None
+        self.output=self.root/'output'
+        self.output_env=patch.dict(os.environ,{'GITHUB_OUTPUT':str(self.output)})
+        self.output_env.start();self.addCleanup(self.output_env.stop)
         self.cwd=os.getcwd();os.chdir(self.root);self.addCleanup(os.chdir,self.cwd)
 
     def run_command(self,args,**kwargs):
@@ -29,7 +32,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((self.lock/'operation.json').exists())
         if self.fail and self.fail in ' '.join(args):raise subprocess.CalledProcessError(1,args)
         stdout=json.dumps({'items':[{'metadata':{'name':'worker','labels':{}}},
-                                   {'metadata':{'name':'master','labels':{'node-role.kubernetes.io/control-plane':'true'}}}]})
+                                   {'metadata':{'name':'master','labels':{'node-role.kubernetes.io/control-plane':'true'}}},
+                                   {'metadata':{'name':'held-worker','labels':{}},'spec':{'unschedulable':True}}]})
         return subprocess.CompletedProcess(args,0,stdout=stdout)
 
     def test_every_mode_acquires_before_mutation_and_releases_on_success(self):
@@ -41,14 +45,17 @@ class WorkflowTests(unittest.TestCase):
                 if mode=='destroy':self.assertIn(['terraform','destroy','-auto-approve'],self.commands)
                 if mode=='drain':
                     self.assertLess(self.commands.index(['kubectl','cordon','worker']),self.commands.index(['terraform','apply','-auto-approve']))
-                    self.assertGreater(self.commands.index(['kubectl','uncordon','worker']),self.commands.index(['terraform','apply','-auto-approve']))
+                    self.assertFalse(any(cmd[0]=='kubectl' for cmd in self.commands[self.commands.index(['terraform','apply','-auto-approve'])+1:]))
+                output=dict(line.split('=',1) for line in self.output.read_text().splitlines())
+                self.assertEqual(json.loads(output['drained_nodes']), ['worker','master'] if mode=='drain' else [])
 
     def test_failed_mutations_keep_lock_and_skip_later_stages(self):
-        for fail in ['cordon','drain','terraform init','terraform apply','uncordon','kubectl wait']:
+        for fail in ['cordon','drain','terraform init','terraform apply']:
             with self.subTest(fail=fail),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
                 self.fail=fail;self.commands=[]
                 with self.assertRaises(subprocess.CalledProcessError):execute('drain',False,self.lock)
                 self.assertTrue((self.lock/'operation.json').exists())
+                self.assertFalse(self.output.exists())
                 count=len(self.commands)
                 with self.assertRaises(FileExistsError):execute('normal',False,self.lock)
                 self.assertEqual(len(self.commands),count)
@@ -76,6 +83,9 @@ class WorkflowTests(unittest.TestCase):
         with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
             self.assertFalse(execute('drain',True,self.lock))
         self.assertEqual(self.commands,[])
+        output=dict(line.split('=',1) for line in self.output.read_text().splitlines())
+        self.assertEqual(output['has_changes'],'false')
+        self.assertEqual(json.loads(output['drained_nodes']),[])
 
 class WiringTests(unittest.TestCase):
     def test_only_one_mutating_job_and_download_failure_cannot_reach_it(self):
@@ -104,5 +114,15 @@ class WiringTests(unittest.TestCase):
         self.assertEqual(len(mutation),1)
         self.assertEqual(mutation[0][0],'apply')
         self.assertNotIn('always()',doc['jobs']['trigger-ansible']['if'])
+        self.assertEqual(job['outputs']['drained_nodes'], '${{ steps.apply.outputs.drained_nodes }}')
+        dispatch=doc['jobs']['trigger-ansible']
+        payload=dispatch['steps'][0]['with']['client-payload']
+        self.assertEqual(json.loads(payload.replace('${{ needs.apply.outputs.drained_nodes }}', '["worker"]')),
+                         {'drained_nodes':['worker']})
+        for result in ['success','failure','cancelled','skipped']:
+            for changed in ['true','false']:
+                condition=dispatch['if'].replace('!cancelled()','True').replace('&&',' and ')
+                condition=condition.replace('needs.apply.result',repr(result)).replace('needs.apply.outputs.has_changes',repr(changed))
+                self.assertEqual(eval(condition,{'__builtins__':{}},{}),result=='success' and changed=='true')
 
 if __name__=='__main__':unittest.main()
