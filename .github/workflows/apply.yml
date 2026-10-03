@@ -128,7 +128,7 @@ jobs:
             plan.exitcode
 
   apply:
-    name: Locked drain, apply and recovery
+    name: Locked drain and apply
     needs: [check-conditions, download-plan]
     if: >-
       !cancelled() && needs.check-conditions.outputs.should_run == 'true'
@@ -142,6 +142,7 @@ jobs:
         - /var/lib/homelab-maintenance:/maintenance
     outputs:
       has_changes: ${{ steps.apply.outputs.has_changes }}
+      drained_nodes: ${{ steps.apply.outputs.drained_nodes }}
     env:
       HOMELAB_RUNNER_INSTANCE: cc1aeeb7-4827-466c-9d4b-5dc6c881f193
       MAINTENANCE_OWNER: ${{ github.repository }}/${{ github.run_id }}/${{ github.run_attempt }}
@@ -221,6 +222,7 @@ jobs:
           token: ${{ secrets.ORG_DISPATCH_TOKEN }}
           repository: Starktastic-Homelab/ansible
           event-type: infrastructure-changed
+          client-payload: '{"drained_nodes": ${{ needs.apply.outputs.drained_nodes }}}'
 
   cleanup:
     name: Cleanup after apply

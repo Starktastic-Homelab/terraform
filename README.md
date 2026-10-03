@@ -209,7 +209,7 @@ The apply workflow supports three mutually exclusive modes, controlled via check
 | Mode | Behavior |
 |------|----------|
 | **Normal** | Standard `terraform apply` |
-| **Drain** | Cordon + drain cluster nodes → apply → uncordon + wait for readiness |
+| **Drain** | Cordon + drain cluster nodes → apply → Ansible installs k3s → readiness + uncordon → bootstrap |
 | **Destroy** | Full `terraform destroy` (requires explicit checkbox confirmation) |
 
 After a successful apply, the workflow **triggers the Ansible repo** via `repository_dispatch`, continuing the pipeline.
@@ -254,10 +254,24 @@ bootstrap qualified before this workflow is enabled. `apply.yml` pins the same
 Ansible helper used by Apps/Ansible and bind-mounts
 `/var/lib/homelab-maintenance:/maintenance`. A missing runner marker blocks all
 VM mutations. Normal, drain and destroy modes run under one persistent owner;
-failed plan downloads cannot reach mutation. Drain, apply and uncordon share a
-single job, avoiding cross-job secret-output loss. Ownership is rechecked before
-every infrastructure command. Only successful recovery releases it, before
-Ansible dispatch acquires its own operation.
+failed plan downloads cannot reach mutation. Drain and apply share a single job,
+avoiding cross-job secret-output loss. Ownership is rechecked before every
+infrastructure command. Successful apply releases it before Ansible dispatch
+acquires its own operation. Terraform no longer waits for Kubernetes on fresh
+VMs: Ansible installs k3s first, waits for inventory nodes to become Ready, then
+restores scheduling before ArgoCD bootstrap. Ansible releases only on success.
+
+Merge the companion Ansible drain-recovery receiver **before this sender**.
+The `infrastructure-changed` payload carries `drained_nodes`, containing only
+nodes that were schedulable before Terraform cordoned them. Ansible patches only
+names still present in its current inventory; removed nodes need no recovery.
+Existing intentional cordons on surviving Node objects remain held. A new Node
+object after VM/cluster recreation has Kubernetes' normal scheduling defaults;
+this handoff does not persist operator cordons across object deletion.
+Normal/destroy operations send an empty list; old dispatches and ordinary Ansible
+push/manual runs do not perform drain recovery. If dispatch fails after successful
+apply/release, inspect both workflow runs and retry that failed dispatch with its
+original payload; do not rerun drain/apply to reconstruct the pre-drain list.
 
 Failure/cancellation leaves the operation record on VM300. Inspect the owning
 run and exact stage, stop concurrent GUI actions, and reconcile actual VM and
@@ -335,7 +349,6 @@ installation may need network access. The checks cover no-op and in-place change
 master/worker/image replacement, interrupted replacement retries, inert source
 defaults, first activation and missing master identity. Runtime power-off/deletion,
 UUID regeneration, retained storage survival and the integrated Ansible handoff still
-need disposable-lab qualification before activation. In particular, current drain
-mode tries to uncordon/wait for Kubernetes before Ansible installs k3s on replacement
-VMs. That recovery step must be moved to the post-bootstrap handoff before activation;
-this source preparation does not make drain-mode replacement operational.
+need disposable-lab qualification before activation. The paired drain handoff moves
+readiness and uncordoning after Ansible installs k3s and before application bootstrap;
+offline checks and a no-op production plan do not qualify a live replacement.

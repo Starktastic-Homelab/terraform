@@ -29,6 +29,7 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
         verify(root, owner, nonce)
         return subprocess.run(list(args), check=True, text=True, capture_output=args[:3] == ('kubectl', 'get', 'nodes'))
 
+    drained_nodes = []
     if changed:
         if mode == 'drain':
             nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json').stdout)['items']
@@ -37,6 +38,8 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
                 labels = node['metadata'].get('labels', {})
                 group = masters if any(k in labels for k in ('node-role.kubernetes.io/master', 'node-role.kubernetes.io/control-plane')) else workers
                 group.append(node['metadata']['name'])
+                if not node.get('spec', {}).get('unschedulable', False):
+                    drained_nodes.append(node['metadata']['name'])
             for name in workers + masters:
                 run('kubectl', 'cordon', name)
             for name in workers + masters:
@@ -47,13 +50,13 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
             run('terraform', 'destroy', '-auto-approve')
         run('terraform', 'apply', 'plan.tfplan' if saved_plan and mode != 'destroy' else '-auto-approve')
         advance(root, owner, nonce, 'applying', 'recovering')
-        if mode == 'drain':
-            # Failure or uncertainty intentionally retains the operation; no always-unlock.
-            nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json').stdout)['items']
-            for node in nodes:
-                run('kubectl', 'uncordon', node['metadata']['name'])
-            run('kubectl', 'wait', '--for=condition=Ready', 'nodes', '--all', '--timeout=300s')
     release(root, owner, nonce)
+    # Fresh guests do not run k3s yet. Ansible recovers scheduling after install.
+    # Failed mutations retain ownership and never publish a success handoff.
+    if os.environ.get('GITHUB_OUTPUT'):
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('has_changes=' + str(changed).lower() + '\n')
+            stream.write('drained_nodes=' + json.dumps(drained_nodes, separators=(',', ':')) + '\n')
     return changed
 
 
@@ -62,7 +65,4 @@ if __name__ == '__main__':
     parser.add_argument('--mode', required=True, choices=['normal', 'drain', 'destroy'])
     parser.add_argument('--saved-plan', action='store_true')
     args = parser.parse_args()
-    changed = execute(args.mode, args.saved_plan)
-    if os.environ.get('GITHUB_OUTPUT'):
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            stream.write('has_changes=' + str(changed).lower() + '\n')
+    execute(args.mode, args.saved_plan)
