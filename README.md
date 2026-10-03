@@ -352,3 +352,24 @@ UUID regeneration, retained storage survival and the integrated Ansible handoff 
 need disposable-lab qualification before activation. The paired drain handoff moves
 readiness and uncordoning after Ansible installs k3s and before application bootstrap;
 offline checks and a no-op production plan do not qualify a live replacement.
+
+### Persistent CSI resource-pool membership
+
+`k3s_resource_pool` defaults to `null`, preserving existing VM placement. After
+separately creating and qualifying the shared CSI pool with Ansible's manual
+`proxmox-csi-storage.yml`, set it to that pool's name in the reviewed activation PR.
+The existing Proxmox provider then assigns both control-plane and worker VMs to
+the pool during creation and keeps membership on replacement. Enrollment of
+existing VMs is an in-place update in the pinned provider's offline plans.
+
+The pool itself and CSI user/token grants are external shared infrastructure;
+Terraform neither creates nor destroys them. This matters because VM-specific
+ACLs disappear with VM deletion, while pool grants can cover replacement VMs.
+Keep the pool limited to k3s VMs and keep the reserved image-owner ID outside
+all VM/container allocations. Never add NAS storage or unrelated VMs to this pool.
+The pool must exist before enrollment; a source merge with the default `null`
+does not activate membership or grant CSI access. Integrated permissions and
+replacement behavior still need disposable-lab qualification before activation.
+
+The provider-plan regression suite also covers pool enrollment, stable membership
+and membership after worker replacement, without API access or an apply.

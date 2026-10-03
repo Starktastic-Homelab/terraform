@@ -145,3 +145,9 @@ variable "control_plane_uuids" {
     error_message = "Coordinated rebuilding requires exactly one control-plane VM with a nonempty SMBIOS UUID."
   }
 }
+
+variable "pool" {
+  description = "Existing external Proxmox resource pool; membership follows VM creation"
+  type        = string
+  default     = null
+}

@@ -25,6 +25,7 @@ module "master_nodes" {
   vm_id = var.start_vm_id + count.index
   name  = "${var.name_prefix}-master-${format("%02d", count.index + 1)}"
 
+  pool        = var.k3s_resource_pool
   target_node = var.proxmox_target_node
   clone       = var.base_vm_name
 
@@ -57,6 +58,7 @@ module "worker_nodes" {
   vm_id = var.start_vm_id + var.master_count + count.index
   name  = "${var.name_prefix}-worker-${format("%02d", count.index + 1)}"
 
+  pool        = var.k3s_resource_pool
   target_node = var.proxmox_target_node
   clone       = var.base_vm_name
 

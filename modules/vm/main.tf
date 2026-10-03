@@ -8,6 +8,7 @@ locals {
 resource "proxmox_vm_qemu" "vm" {
   vmid               = var.vm_id
   name               = var.name
+  pool               = var.pool
   target_node        = var.target_node
   clone              = var.clone
   scsihw             = var.scsihw
