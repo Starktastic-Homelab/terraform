@@ -12,3 +12,8 @@ output "target_node" {
   description = "The Proxmox node where the VM was created"
   value       = proxmox_vm_qemu.vm.target_node
 }
+
+output "smbios_uuid" {
+  description = "Proxmox-generated VM incarnation UUID, changed by clone/recreation even when VMID is reused"
+  value       = try(proxmox_vm_qemu.vm.smbios[0].uuid, null)
+}

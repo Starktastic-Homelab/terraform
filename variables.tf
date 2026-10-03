@@ -96,3 +96,9 @@ variable "ssh_pub_key" {
   sensitive   = true
   description = "SSH public key(s) to inject via cloud-init for the default user"
 }
+
+variable "rebuild_workers_with_control_plane" {
+  description = "Recreate every worker when control-plane VM identity changes; enable during reviewed CSI activation"
+  type        = bool
+  default     = false
+}

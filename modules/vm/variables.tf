@@ -130,3 +130,18 @@ variable "usb_devices" {
   }))
   default = []
 }
+
+variable "control_plane_uuids" {
+  description = "Single control-plane incarnation required by a worker; null disables coordinated rebuilding"
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition = var.control_plane_uuids == null ? true : (
+      length(var.control_plane_uuids) == 1 && alltrue([
+        for uuid in var.control_plane_uuids : can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", uuid))
+      ])
+    )
+    error_message = "Coordinated rebuilding requires exactly one control-plane VM with a nonempty SMBIOS UUID."
+  }
+}

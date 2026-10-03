@@ -30,6 +30,18 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/maintenance-helper/scripts
 
+  rebuild-policy-tests:
+    name: Offline cluster rebuild policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          # renovate: datasource=github-releases depName=hashicorp/terraform
+          terraform_version: '1.16.5'
+          terraform_wrapper: false
+      - run: python3 scripts/tests/test-rebuild-cohort.py
+
   validate-and-plan:
     name: Terraform validate and plan
     env:

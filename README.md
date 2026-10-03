@@ -293,3 +293,49 @@ CSI, allocate storage or change an application PVC. Shared bootstrap,
 old-writer exclusion and GitOps resize sequencing must be integrated before
 production activation. Existing maintenance locking and PR apply modes remain
 unchanged; no Velero checkpoint is introduced.
+
+
+### Coordinated control-plane replacement
+
+The accepted policy is to rebuild all three k3s VMs when the sole control-plane
+VM is replaced. Worker-only replacements remain independent. In-place control-plane
+CPU/memory changes do not require a worker rebuild. The ordinary Packer → Terraform
+→ Ansible handoff remains the entry point; no Velero checkpoint or additional
+per-rebuild confirmation is introduced.
+
+Source preparation defaults `rebuild_workers_with_control_plane` to `false`.
+Enable it only in the separately reviewed storage activation/rebuild change:
+**first activation replaces both existing workers**, because their resource state
+has no control-plane marker yet. Keep it enabled afterwards. Turning it off also
+changes that marker and can replace workers; it is not a non-disruptive rollback.
+This source PR must have a real provider plan showing no current VM changes.
+
+When enabled, each worker stores the control-plane SMBIOS UUID in Telmate's native
+`force_recreate_on_change_of` field. The pinned provider marks this field `ForceNew`.
+A planned master replacement makes its UUID unknown and forces worker replacement;
+a completed master recreation leaves a different UUID, so a retry still replaces
+any surviving worker whose stored marker is old. Numeric VMIDs and provider resource
+IDs can be reused and are not sufficient generation identities. The policy requires
+exactly one master with a valid UUID; multi-master recovery needs separate design.
+[Provider field](https://github.com/Telmate/terraform-provider-proxmox/blob/v3.0.2-rc10/proxmox/resource_vm_qemu.go).
+
+The existing apply workflow dispatches Ansible only after Terraform succeeds.
+Packer guests have no k3s installation, so a new master cannot bootstrap its fresh
+cluster before worker replacement finishes through that workflow. Failed apply
+retains maintenance ownership and skips Ansible; this change does not authorize
+clearing that lock, bypassing the pipeline, using targeted production applies or
+reattaching storage to an unfenced old writer. Full destroy mode keeps its existing
+sequence. NAS exports, external image ownership and retained disks stay outside
+this VM lifecycle.
+
+`python3 scripts/tests/test-rebuild-cohort.py` runs real pinned-provider plans in a
+temporary local backend with synthetic state, a closed loopback API endpoint, API
+permission probing disabled and refresh disabled. It never applies. Initial provider
+installation may need network access. The checks cover no-op and in-place changes,
+master/worker/image replacement, interrupted replacement retries, inert source
+defaults, first activation and missing master identity. Runtime power-off/deletion,
+UUID regeneration, retained storage survival and the integrated Ansible handoff still
+need disposable-lab qualification before activation. In particular, current drain
+mode tries to uncordon/wait for Kubernetes before Ansible installs k3s on replacement
+VMs. That recovery step must be moved to the post-bootstrap handoff before activation;
+this source preparation does not make drain-mode replacement operational.

@@ -45,6 +45,12 @@ module "master_nodes" {
 }
 
 module "worker_nodes" {
+  # Persist the control-plane incarnation in each worker's own resource state.
+  # Unlike a one-plan trigger, a mismatch remains after an interrupted apply.
+  control_plane_uuids = var.rebuild_workers_with_control_plane ? [
+    for master in module.master_nodes : master.smbios_uuid
+  ] : null
+
   source = "./modules/vm"
   count  = var.worker_count
 
