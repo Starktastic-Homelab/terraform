@@ -269,3 +269,27 @@ holds and generation-retirement evidence before replacing an iSCSI worker.
 Offline behavioral checks (with the pinned Ansible helper on `PYTHONPATH`):
 `python3 scripts/tests/test-maintenance-workflow.py`. These use fake executables,
 not live Terraform state; real cross-container locking remains a deployment gate.
+
+
+### Proxmox CSI disk ownership
+
+The shared VM module reserves SCSI disk attachments for the upstream Proxmox CSI
+controller with `ignore_changes = [disks[0].scsi]`. Terraform still manages the
+virtio0 boot disk and ide2 cloud-init disk. Do not add Terraform-managed SCSI
+volumes to this module: their later changes would also be ignored.
+
+This prevents an unrelated VM update from undoing a CSI attachment. It does not
+protect worker-owned disks from deletion: retained CSI images must be allocated
+under a separate reserved Proxmox owner ID outside this cluster's Terraform
+state. The NAS export, Proxmox storage registration, CSI credentials and retained
+PV/PVC bindings also have independent lifecycles. Never put that owner ID into
+the disposable VM range.
+
+The ownership rule was qualified with the pinned Telmate 3.0.2-rc10 provider in
+separate disposable Debian NFS and TrueNAS 25 labs: no-op/unrelated updates,
+native worker movement, PVC growth, and two complete rebuilds against each
+backend preserved the retained image. This module change alone does not install
+CSI, allocate storage or change an application PVC. Shared bootstrap,
+old-writer exclusion and GitOps resize sequencing must be integrated before
+production activation. Existing maintenance locking and PR apply modes remain
+unchanged; no Velero checkpoint is introduced.
