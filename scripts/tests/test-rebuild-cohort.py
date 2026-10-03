@@ -108,6 +108,7 @@ def main():
                        for r in document['resource_changes']}
             assert actual == expected, f'{name}: expected {expected}, got {actual}; changed fields: {changed}'
             print(name + ': passed', flush=True)
+            return document
 
         noop = {node: ['no-op'] for node in NODES}
         check('unchanged', state, noop, enabled)
@@ -130,12 +131,23 @@ def main():
         check('disabled by source default', legacy, noop)
         check('first activation replaces workers', legacy,
               dict(noop, **{node: ['delete', 'create'] for node in WORKERS}), enabled)
+        pool = '-var=k3s_resource_pool=offline-csi'
+        document = check('pool enrollment updates VMs without replacement', legacy,
+                         {node: ['update'] for node in NODES}, pool)
+        enrolled = copy.deepcopy(legacy)
+        for change in document['resource_changes']:
+            assert change['change']['after']['pool'] == 'offline-csi'
+            attributes(enrolled, change['address']).update(change['change']['after'])
+        check('existing pool membership is stable', enrolled, noop, pool)
+        document = check('worker recreation retains pool membership', enrolled,
+                         dict(noop, **{WORKERS[0]: ['delete', 'create']}), pool, '-replace=' + WORKERS[0])
+        assert all(change['change']['after']['pool'] == 'offline-csi' for change in document['resource_changes'])
         attributes(interrupted, MASTER)['smbios'] = []
         state_file.write_text(json.dumps(interrupted))
         refusal = run(root, 'plan', '-refresh=false', '-input=false', '-no-color', enabled, success=False)
         assert refusal.returncode != 0 and 'exactly one control-plane VM' in refusal.stdout + refusal.stderr
         print('missing master UUID refused: passed', flush=True)
-        print('10 offline real-provider planning checks passed; no API access or apply.')
+        print('13 offline real-provider planning checks passed; no API access or apply.')
 
 
 if __name__ == '__main__':

@@ -102,3 +102,14 @@ variable "rebuild_workers_with_control_plane" {
   type        = bool
   default     = false
 }
+
+variable "k3s_resource_pool" {
+  description = "Existing persistent Proxmox pool for k3s VM access grants; null leaves pool membership unconfigured"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.k3s_resource_pool == null || can(regex("^[a-zA-Z][a-zA-Z0-9_-]+$", var.k3s_resource_pool))
+    error_message = "k3s_resource_pool must be null or a valid dedicated pool name."
+  }
+}
