@@ -17,6 +17,8 @@ resource "proxmox_vm_qemu" "vm" {
   machine            = var.machine
   bios               = var.bios
 
+  force_recreate_on_change_of = var.control_plane_uuids == null ? null : jsonencode(var.control_plane_uuids)
+
   cpu {
     sockets = 1
     cores   = var.cores
