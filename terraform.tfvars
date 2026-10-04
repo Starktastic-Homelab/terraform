@@ -23,3 +23,8 @@ network_interfaces = [
 ]
 
 nameserver = "10.9.9.1"
+
+# Retained CSI requires the old worker cohort to disappear on a fresh control plane.
+# First enablement replaces both workers; later worker-only changes stay independent.
+rebuild_workers_with_control_plane = true
+k3s_resource_pool                  = "k3s-csi"
