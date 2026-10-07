@@ -174,7 +174,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Setup Kubectl
-        uses: azure/setup-kubectl@v5.1.0
+        uses: azure/setup-kubectl@v5.2.0
 
       - name: Download Terraform plan artifact
         if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
