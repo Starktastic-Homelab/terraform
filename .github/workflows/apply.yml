@@ -90,51 +90,10 @@ jobs:
           echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
           echo "apply_mode=$APPLY_MODE" >> $GITHUB_OUTPUT
 
-  download-plan:
-    name: Download Terraform plan and exitcode from S3
-    needs: check-conditions
-    if: |
-      needs.check-conditions.outputs.should_run == 'true'
-        && needs.check-conditions.outputs.apply_mode != 'destroy'
-        && github.event_name == 'pull_request_target'
-    runs-on: self-hosted
-    container:
-      image: amazon/aws-cli:latest
-    steps:
-      # Checkout falls back to a compressed archive because this image has no Git.
-      - name: Install checkout archive tools
-        run: dnf install -y tar gzip
-
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Download Terraform plan and exitcode from S3
-        uses: ./.github/actions/s3-cp
-        with:
-          aws_access_key_id: ${{ secrets.S3_ACCESS_KEY }}
-          aws_secret_access_key: ${{ secrets.S3_SECRET_KEY }}
-          aws_endpoint_url: ${{ secrets.S3_ENDPOINT }}
-          source: |
-            s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
-          destination: .
-          recursive: 'true'
-
-      - name: Upload Terraform plan and exitcode artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: tfplan
-          path: |
-            plan.tfplan
-            plan.exitcode
-
   apply:
     name: Locked drain and apply
-    needs: [check-conditions, download-plan]
-    if: >-
-      !cancelled() && needs.check-conditions.outputs.should_run == 'true'
-      && (needs.download-plan.result == 'success'
-      || (needs.download-plan.result == 'skipped'
-      && (needs.check-conditions.outputs.apply_mode == 'destroy' || github.event_name == 'workflow_dispatch')))
+    needs: [check-conditions]
+    if: needs.check-conditions.outputs.should_run == 'true'
     runs-on: self-hosted
     container:
       image: python:trixie
@@ -176,11 +135,23 @@ jobs:
       - name: Setup Kubectl
         uses: azure/setup-kubectl@v5.1.0
 
-      - name: Download Terraform plan artifact
+      # The saved plan holds prior state, so it comes straight from S3 rather
+      # than through an artifact of this public repo.
+      - name: Install AWS CLI for the local S3 composite action
         if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
-        uses: actions/download-artifact@v8
+        run: apt-get update && apt-get install -y awscli
+
+      - name: Download Terraform plan and exitcode from S3
+        if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
+        uses: ./.github/actions/s3-cp
         with:
-          name: tfplan
+          aws_access_key_id: ${{ secrets.S3_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.S3_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.S3_ENDPOINT }}
+          source: |
+            s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
+          destination: .
+          recursive: 'true'
 
       - name: Prepare reviewed image and private kubeconfig
         env:
@@ -207,6 +178,10 @@ jobs:
           else
             python3 scripts/maintenance_apply.py --mode "$APPLY_MODE"
           fi
+
+      - name: Remove saved plan from the runner workspace
+        if: always()
+        run: rm -f plan.tfplan plan.exitcode
 
   trigger-ansible:
     name: Trigger Ansible after successful lock release
@@ -239,6 +214,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
       AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
+      TF_PLAN_PREFIX: s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}
     steps:
       - name: Remove Terraform plan & exitcode files from S3
-        run: aws s3 rm s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }} --recursive --quiet
+        run: aws s3 rm "$TF_PLAN_PREFIX" --recursive --quiet
