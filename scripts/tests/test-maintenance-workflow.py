@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -93,20 +94,38 @@ class WiringTests(unittest.TestCase):
         doc=yaml.safe_load((ROOT/'.github/workflows/apply.yml').read_text())
         job=doc['jobs']['apply']
         self.assertIn('/var/lib/homelab-maintenance:/maintenance',job['container']['volumes'])
-        self.assertEqual(set(job['needs']),{'check-conditions','download-plan'})
+        self.assertEqual(set(job['needs']),{'check-conditions'})
         condition=job['if']
-        # Execute the actual boolean condition with GitHub result values.
+        # Without a status function the implicit success() applies: a failed or cancelled check never applies.
+        for gate in ['always()','cancelled()','failure()']:self.assertNotIn(gate,condition)
+        for should_run in ['true','false']:
+            allowed=eval(condition.replace('needs.check-conditions.outputs.should_run',repr(should_run)),{'__builtins__':{}},{})
+            self.assertEqual(allowed,should_run=='true')
+        # The saved plan comes from S3 inside this job, before the only mutation, so a failed download stops it.
+        steps=job['steps']
+        download=next(x for x in steps if x.get('name')=='Download Terraform plan and exitcode from S3')
+        change=next(x for x in steps if 'maintenance_apply.py' in x.get('run',''))
+        self.assertLess(steps.index(download),steps.index(change))
+        self.assertNotIn('if',change)
+        self.assertFalse(any(x.get('continue-on-error') for x in steps))
         for event in ['workflow_dispatch','pull_request_target']:
             for mode in ['normal','drain','destroy']:
-                for result in ['success','failure','cancelled','skipped']:
-                    expression=condition.replace('!cancelled()', 'True').replace('&&',' and ').replace('||',' or ')
-                    for key,value in {'needs.check-conditions.outputs.should_run':'true',
-                                      'needs.check-conditions.outputs.apply_mode':mode,
-                                      'needs.download-plan.result':result,'github.event_name':event}.items():
-                        expression=expression.replace(key,repr(value))
-                    allowed=eval(expression,{'__builtins__':{}},{})
-                    expected=result=='success' or (result=='skipped' and (mode=='destroy' or event=='workflow_dispatch'))
-                    self.assertEqual(allowed,expected,(event,mode,result))
+                expression=download['if'].replace('&&',' and ').replace('env.APPLY_MODE',repr(mode)).replace('github.event_name',repr(event))
+                # Downloaded exactly when the mutation step passes --saved-plan.
+                self.assertEqual(eval(expression,{'__builtins__':{}},{}),event=='pull_request_target' and mode!='destroy',(event,mode))
+        # Artifacts of this public repo are downloadable by anyone, and a saved plan holds prior state.
+        # An expression in run is pasted into the step script on the runner's disk, so secrets go through env.
+        secret=re.compile(r'\$\{\{[^}]*\bsecrets\b',re.I)
+        for workflow in (ROOT/'.github/workflows').glob('*.y*ml'):
+            for other in yaml.safe_load(workflow.read_text())['jobs'].values():
+                for step in other.get('steps',[]):
+                    self.assertNotRegex(step.get('run',''),secret,workflow.name)
+                    if str(step.get('uses','')).startswith('actions/upload-artifact'):
+                        self.assertNotIn('plan.tfplan',str(step['with'].get('path','')),workflow.name)
+        # Composite inputs can carry secrets (the plan bucket), so no expression may reach a composite script.
+        for action in (ROOT/'.github/actions').glob('*/action.yml'):
+            for step in yaml.safe_load(action.read_text())['runs']['steps']:
+                self.assertNotIn('${{',step.get('run',''),action)
         helper=next(x for x in job['steps'] if x.get('with',{}).get('path')=='maintenance-helper')
         self.assertRegex(helper['with']['ref'],r'^[0-9a-f]{40}$')
         mutation=[(name,step) for name,j in doc['jobs'].items() for step in j.get('steps',[])

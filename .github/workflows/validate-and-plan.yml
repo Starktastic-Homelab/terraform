@@ -8,12 +8,6 @@ on:
       - 'README.md'
       - 'renovate.json'
 
-env:
-  PM_API_URL: ${{ secrets.PM_API_URL }}
-  PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
-  PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
-  TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
-
 jobs:
   maintenance-tests:
     runs-on: ubuntu-latest
@@ -44,7 +38,12 @@ jobs:
 
   validate-and-plan:
     name: Terraform validate and plan
+    # Job-scoped, not workflow-wide: the other PR jobs (and their third-party actions) need no Proxmox token.
     env:
+      PM_API_URL: ${{ secrets.PM_API_URL }}
+      PM_API_TOKEN_ID: ${{ secrets.PM_API_TOKEN_ID }}
+      PM_API_TOKEN_SECRET: ${{ secrets.PM_API_TOKEN_SECRET }}
+      TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
       AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
@@ -89,38 +88,10 @@ jobs:
           
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
-      - name: Upload Terraform plan artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: tfplan
-          path: |
-            plan.tfplan
-            plan.exitcode
-
-      - name: Upload plan log artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: planlog
-          path: plan.log.b64
-
-  upload-plan:
-    name: Upload Terraform plan and exitcode to S3
-    runs-on: self-hosted
-    needs: validate-and-plan
-    container:
-      image: amazon/aws-cli:latest
-    steps:
-      # Each job must provide its own checkout for the local S3 composite action.
-      - name: Install checkout archive tools
-        run: dnf install -y tar gzip
-
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Download Terraform plan artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: tfplan
+      # The saved plan holds prior state, so it goes straight to S3: an artifact
+      # of this public repo is downloadable by anyone.
+      - name: Install AWS CLI and bash for the local S3 composite action
+        run: apk add --no-cache aws-cli bash
 
       - name: Upload Terraform plan and exitcode to S3
         uses: ./.github/actions/s3-cp
@@ -132,6 +103,16 @@ jobs:
             plan.tfplan
             plan.exitcode
           destination: s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
+
+      - name: Upload plan log artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: planlog
+          path: plan.log.b64
+
+      - name: Remove saved plan from the runner workspace
+        if: always()
+        run: rm -f plan.tfplan plan.exitcode plan.log plan.log.b64
 
   comment:
     name: Comment plan in Pull Request

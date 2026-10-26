@@ -42,13 +42,18 @@ runs:
         AWS_ENDPOINT_URL: ${{ inputs.aws_endpoint_url }}
         AWS_REGION: ${{ inputs.region }}
         SOURCES: ${{ inputs.source }}
+        # Inputs can carry secrets (the plan bucket); expanding them in run would paste them into the script.
+        DESTINATION: ${{ inputs.destination }}
+        RECURSIVE: ${{ inputs.recursive }}
+        QUIET: ${{ inputs.quiet }}
+        NO_VERIFY_SSL: ${{ inputs.no_verify_ssl }}
       run: |
         FLAGS=""
-        [[ "${{ inputs.recursive }}" == "true" ]] && FLAGS+=" --recursive"
-        [[ "${{ inputs.quiet }}" == "true" ]] && FLAGS+=" --quiet"
-        [[ "${{ inputs.no_verify_ssl }}" == "true" ]] && FLAGS+=" --no-verify-ssl"
+        [[ "$RECURSIVE" == "true" ]] && FLAGS+=" --recursive"
+        [[ "$QUIET" == "true" ]] && FLAGS+=" --quiet"
+        [[ "$NO_VERIFY_SSL" == "true" ]] && FLAGS+=" --no-verify-ssl"
 
         echo "$SOURCES" | while IFS= read -r src; do
           [ -z "$src" ] && continue
-          aws s3 cp "$src" "${{ inputs.destination }}" $FLAGS
+          aws s3 cp "$src" "$DESTINATION" $FLAGS
         done
