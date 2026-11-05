@@ -133,7 +133,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Setup Kubectl
-        uses: azure/setup-kubectl@v5.1.0
+        uses: azure/setup-kubectl@v5.2.0
 
       # The saved plan holds prior state, so it comes straight from S3 rather
       # than through an artifact of this public repo.
