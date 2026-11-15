@@ -35,6 +35,8 @@ jobs:
           terraform_version: 'v1.17.2'
           terraform_wrapper: false
       - run: python3 scripts/tests/test-rebuild-cohort.py
+      - run: python3 scripts/tests/test-storage-root.py
+      - run: python3 scripts/tests/test-check-clone-source.py
 
   validate-and-plan:
     name: Terraform validate and plan
