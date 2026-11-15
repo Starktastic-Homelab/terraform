@@ -15,6 +15,8 @@ resource "proxmox_virtual_environment_vm" "storage" {
 
   cpu {
     cores = var.cores
+    # Matches the k3s VMs; a later change is an in-place update that needs a storage-VM power cycle.
+    type = "host"
   }
 
   memory {
@@ -75,6 +77,8 @@ resource "proxmox_virtual_environment_vm" "storage" {
   stop_on_destroy                      = true
   purge_on_destroy                     = false
   delete_unreferenced_disks_on_destroy = false
+  # Offline-only updates fail instead of power-cycling the VM under every iSCSI session.
+  reboot_after_update = false
 
   lifecycle {
     prevent_destroy = true

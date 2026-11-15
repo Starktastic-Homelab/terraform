@@ -153,6 +153,8 @@ class StorageRoot(unittest.TestCase):
         vm = self.planned_vm()
         self.assertEqual((vm['stop_on_destroy'], vm['purge_on_destroy'], vm['delete_unreferenced_disks_on_destroy']),
                          (True, False, False))
+        self.assertFalse(vm['reboot_after_update'])
+        self.assertEqual(vm['cpu'][0]['type'], 'host')
         result = self.plan_against(self.state, '-destroy', success=False)
         self.assertIn('Instance cannot be destroyed', result.stdout + result.stderr)
 
