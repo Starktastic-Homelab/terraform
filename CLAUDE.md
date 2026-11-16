@@ -25,7 +25,6 @@ python3 scripts/tests/test-rebuild-cohort.py          # temp copy, no backend, n
                                                       # terraform (TERRAFORM=) + providers (COHORT_PLUGIN_DIR=)
 PYTHONPATH=<ansible@pinned-SHA>/scripts python3 scripts/tests/test-maintenance-workflow.py  # PyYAML
 python3 scripts/check-readme-images.py
-bash scripts/render-diagrams.sh [--check]             # CI's diagrams.yml is the authoritative renderer
 ```
 
 A real `terraform plan` needs `S3_ACCESS_KEY`/`S3_SECRET_KEY`/`S3_ENDPOINT` (as `AWS_*`), `PM_API_URL`,
@@ -51,7 +50,7 @@ next. Never commit `.terraform/`, `.terraform.lock.hcl` or `*.tfplan`.
 - Worker IPs/VMIDs are offset by `master_count` (`main.tf`); NIC 0 (`ipconfig0`) is Ansible's address.
 - CSI owns data disks: `lifecycle.ignore_changes` covers `disks[0].scsi` (`modules/vm/main.tf`). Never add
   Terraform-managed SCSI disks. Pool `k3s-csi` and the CSI image owner exist outside this repo.
-- Maintenance lock (README "Storage-safe maintenance coordination"): failed runs keep the lock. Never
+- Maintenance lock (`docs/storage-safe-maintenance.md`): failed runs keep the lock. Never
   clear it on a timer or rerun apply to take it over; if only the dispatch failed, retry it with its
   original payload. No targeted production applies.
 - Drain cordons every node, then drains workers before masters with `--disable-eviction`; one-at-a-time

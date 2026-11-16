@@ -1,0 +1,254 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="926" viewBox="0 0 1100 926" role="img" aria-labelledby="t d">
+  <title id="t">Apply flow: from pull request to dispatch</title>
+  <desc id="d">On a pull request, validate-and-plan.yml runs four jobs: maintenance-tests, rebuild-policy-tests, validate-and-plan on the self-hosted runner, and comment, which posts the plan as a sticky comment. The plan job saves plan.tfplan and plan.exitcode to an S3 bucket under pr-n. A person merges the pull request. apply.yml then runs check-conditions, which stops on a skip pattern and reads the mode from the pull request body: normal applies the saved plan; drain needs the confirm box and cordons and drains every node before applying the saved plan; destroy needs the confirm box and runs terraform destroy followed by a fresh apply. The apply job runs scripts/maintenance_apply.py under the maintenance lock: acquire, applying, recovering, release, with ownership verified before every command. A failed command keeps the lock. If something changed, trigger-ansible sends the repository dispatch infrastructure-changed with the payload drained_nodes to ansible's deploy.yml, and cleanup deletes the saved plan. Separately, drift.yml plans every day at 08:00 UTC and opens, comments on or closes an issue labelled drift.</desc>
+  <defs>
+    <radialGradient id="ga"><stop offset="0" stop-color="#3B82F6" stop-opacity=".55"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gb"><stop offset="0" stop-color="#6366F1" stop-opacity=".45"/><stop offset="1" stop-color="#6366F1" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gc"><stop offset="0" stop-color="#0891B2" stop-opacity=".35"/><stop offset="1" stop-color="#0891B2" stop-opacity="0"/></radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1B1D33"/><stop offset="1" stop-color="#0F0F1A"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".5"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity=".08"/><stop offset="1" stop-color="#93C5FD" stop-opacity=".35"/></linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1100" y2="0"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+    <linearGradient id="sq" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1B1D33"/><stop offset="1" stop-color="#0F0F1A"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#3B82F6" stop-opacity=".5"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0"/></radialGradient>
+    <linearGradient id="st" gradientUnits="userSpaceOnUse" x1="12" y1="8" x2="36" y2="42"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".35" stop-color="#93C5FD"/><stop offset=".75" stop-color="#3B82F6"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+    <linearGradient id="wm" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="182" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#93C5FD"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+    <clipPath id="clip"><rect width="1100" height="926" rx="28"/></clipPath>
+    <symbol id="i-ansible" viewBox="0 0 128 128"><path fill="#1A1918" d="M126 64c0 34.2-27.8 62-62 62S2 98.2 2 64 29.8 2 64 2s62 27.8 62 62"/><path fill="#FFF" d="M65 39.9l16 39.6-24.1-19.1L65 39.9zm28.5 48.7L68.9 29.2c-.7-1.7-2.1-2.6-3.8-2.6-1.7 0-3.2.9-3.9 2.6L34 94.3h9.3L54 67.5l32 25.9c1.3 1 2.2 1.5 3.4 1.5 2.4 0 4.5-1.8 4.5-4.4.1-.5-.1-1.2-.4-1.9z"/></symbol>
+    <symbol id="i-terraform" viewBox="0 0 128 128"><g fill-rule="evenodd"><path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="#5c4ee5"/><path d="M81.41 81.336l31.633-18.418V26.082L81.41 44.5zm0 0" fill="#4040b2"/><path d="M11.242 42.36L42.86 60.776V23.941L11.242 5.523zm0 0M77.941 85.375L46.324 66.957v36.82l31.617 18.418zm0 0" fill="#5c4ee5"/></g></symbol>
+  </defs>
+  <style>
+    text { font-family: Manrope, Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif; }
+    .mono { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+    .panel { fill: #0B0C16; }
+    .card { fill: url(#card); fill-opacity: .8; }
+    .rim { fill: none; stroke: url(#rim); }
+    .lit { fill: none; stroke: #60A5FA; stroke-width: 2; }
+    .lane { fill: #FFFFFF; fill-opacity: .035; stroke: #FFFFFF; stroke-opacity: .09; }
+    .tile { fill: #262A52; }
+    .t1 { fill: #F5F7FF; }
+    .t2 { fill: #AEB9D6; }
+    .t3 { fill: #7F8AAB; }
+    .acc { fill: #93C5FD; }
+    .vio { fill: #C4B5FD; }
+    .amb { fill: #FCD34D; }
+    .rule { stroke: #FFFFFF; stroke-opacity: .1; }
+    .chip { fill: #3B82F6; fill-opacity: .16; stroke: #60A5FA; stroke-opacity: .45; }
+    .chipt { fill: #DBEAFE; }
+    .wf { fill: #FFFFFF; fill-opacity: .06; stroke: #FFFFFF; stroke-opacity: .2; }
+    .wft { fill: #E6EBFA; }
+    .dot { fill: #22D3EE; }
+    .edge { fill: none; stroke: url(#edge); stroke-width: 2.5; stroke-opacity: .35; }
+    .flow { fill: none; stroke: url(#edge); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 2 10; animation: flow 1.1s linear infinite; }
+    .head { fill: #22D3EE; }
+    .badge { fill: #0F1124; stroke: #60A5FA; stroke-width: 1.5; }
+    .badget { fill: #DBEAFE; }
+    .side { fill: none; stroke: #A78BFA; stroke-width: 1.5; stroke-dasharray: 3 5; stroke-linecap: round; animation: flow 3s linear infinite; }
+    .sidehead { fill: #A78BFA; }
+    .pill { fill: #171331; stroke: #A78BFA; stroke-opacity: .55; }
+    .pillt { fill: #DDD6FE; }
+    .wire { fill: none; stroke: #8A94B8; stroke-opacity: .6; stroke-width: 1.5; }
+    .wirehead { fill: #8A94B8; }
+    .hum { fill: #2A2110; stroke: #FBBF24; stroke-opacity: .6; }
+    .humt { fill: #FDE68A; }
+    .gate { fill: none; stroke: #FBBF24; stroke-opacity: .7; stroke-width: 1.5; stroke-dasharray: 6 6; }
+    .tag { fill: #151936; stroke: #8A94B8; stroke-opacity: .5; }
+    .tagt { fill: #C9D1EA; }
+    .here { fill: #13244D; stroke: #60A5FA; }
+    .heret { fill: #DBEAFE; }
+    .dim { opacity: .5; }
+    @keyframes flow { to { stroke-dashoffset: -24; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .side { animation: none; } }
+    @media (prefers-color-scheme: light) {
+      .panel { fill: #F3F6FF; }
+      .blob { opacity: .4; }
+      .card { fill: #FFFFFF; fill-opacity: .85; }
+      .rim { stroke: #C7D2FE; }
+      .lit { stroke: #2563EB; }
+      .lane { fill: #FFFFFF; fill-opacity: .55; stroke: #C7D2FE; stroke-opacity: .9; }
+      .tile { fill: #EEF2FF; }
+      .t1 { fill: #0E1330; }
+      .t2 { fill: #4A5578; }
+      .t3 { fill: #6B7699; }
+      .acc { fill: #2563EB; }
+      .vio { fill: #6D28D9; }
+      .amb { fill: #B45309; }
+      .rule { stroke: #0E1330; stroke-opacity: .1; }
+      .chip { fill: #2563EB; fill-opacity: .08; stroke: #2563EB; stroke-opacity: .35; }
+      .chipt { fill: #1E3A8A; }
+      .wf { fill: #FFFFFF; fill-opacity: .9; stroke: #B6C2EC; stroke-opacity: 1; }
+      .wft { fill: #1B2147; }
+      .dot { fill: #0891B2; }
+      .edge, .flow { stroke: #2563EB; }
+      .head { fill: #2563EB; }
+      .badge { fill: #FFFFFF; stroke: #2563EB; }
+      .badget { fill: #1E3A8A; }
+      .side { stroke: #7C3AED; }
+      .sidehead { fill: #7C3AED; }
+      .pill { fill: #F5F3FF; stroke: #7C3AED; stroke-opacity: .45; }
+      .pillt { fill: #5B21B6; }
+      .wire { stroke: #64709A; }
+      .wirehead { fill: #64709A; }
+      .hum { fill: #FFFBEB; stroke: #D97706; stroke-opacity: .6; }
+      .humt { fill: #92400E; }
+      .gate { stroke: #D97706; }
+      .tag { fill: #FFFFFF; stroke: #64709A; stroke-opacity: .5; }
+      .tagt { fill: #2A3358; }
+      .here { fill: #EAF0FF; stroke: #2563EB; }
+      .heret { fill: #1E3A8A; }
+    }
+  </style>
+  <g clip-path="url(#clip)"><rect class="panel" width="1100" height="926"/><g class="blob"><ellipse cx="957" cy="64.82" rx="429" ry="463" fill="url(#ga)"/><ellipse cx="110" cy="898.22" rx="429" ry="463" fill="url(#gb)"/><ellipse cx="759" cy="990.82" rx="385" ry="370.4" fill="url(#gc)"/></g></g>
+
+  <text class="acc" x="40" y="52" font-size="14" font-weight="700" letter-spacing="3">APPLY FLOW</text>
+  <text class="t1" x="40" y="86" font-size="26" font-weight="800">From pull request to dispatch</text>
+  <g class="t2" font-size="13.5">
+    <path class="edge" d="M700 48H744"/><path class="flow" d="M700 48H744"/>
+    <text x="754" y="52.5">trigger</text>
+    <path class="side" d="M700 76H744"/>
+    <text x="754" y="80.5">saved plan</text>
+    <circle class="dot" cx="868" cy="48" r="4"/>
+    <text x="880" y="52.5">uses the self-hosted runner</text>
+    <path class="gate" d="M856 76H872"/>
+    <text x="880" y="80.5">manual step</text>
+  </g>
+
+  <!-- row labels -->
+  <g class="acc" font-size="10.5" font-weight="700" letter-spacing="1">
+    <text x="32" y="180">ON PULL</text>
+    <text x="32" y="195">REQUEST</text>
+    <text x="32" y="338">ON MERGE</text>
+    <text x="32" y="835">EVERY</text>
+    <text x="32" y="850">DAY</text>
+  </g>
+
+  <!-- pull request: validate-and-plan.yml -->
+  <rect class="card" x="112" y="112" width="718" height="144" rx="20"/><rect class="rim" x="112.5" y="112.5" width="717" height="143" rx="19.5"/>
+  <rect class="tile" x="126" y="124" width="36" height="36" rx="10.8"/><use href="#i-terraform" x="133.2" y="131.2" width="21.6" height="21.6"/>
+  <text class="t1 mono" x="172" y="141" font-size="16" font-weight="700">validate-and-plan.yml</text>
+  <text class="t2" x="172" y="158" font-size="12.5">pull requests to main</text>
+  <path class="rule" d="M126 172H816"/>
+  <rect class="wf" x="126" y="184" width="168" height="28" rx="8"/><text class="wft mono" x="136" y="202.55" font-size="13">maintenance-tests</text>
+  <rect class="wf" x="304" y="184" width="190" height="28" rx="8"/><text class="wft mono" x="314" y="202.55" font-size="13">rebuild-policy-tests</text>
+  <rect class="wf" x="504" y="184" width="184" height="28" rx="8"/><text class="wft mono" x="514" y="202.55" font-size="13">validate-and-plan</text><circle class="dot" cx="676" cy="198" r="3.5"/>
+  <path class="wire" d="M690 198H708"/><path class="wirehead" d="M717 198l-8 -4.5v9.0z"/>
+  <rect class="wf" x="718" y="184" width="98" height="28" rx="8"/><text class="wft mono" x="728" y="202.55" font-size="13">comment</text>
+  <g class="t2" font-size="12.5">
+    <text x="126" y="230">the locked apply, run</text>
+    <text x="126" y="246">against fake tools</text>
+    <text x="304" y="230">the rebuild cohort, from</text>
+    <text x="304" y="246">offline provider plans</text>
+    <text x="504" y="230">terraform validate,</text>
+    <text x="504" y="246">then plan</text>
+    <text x="718" y="230">sticky plan</text>
+    <text x="718" y="246">comment</text>
+  </g>
+
+  <!-- the saved plan -->
+  <rect class="card" x="864" y="112" width="206" height="144" rx="20"/><rect class="rim" x="864.5" y="112.5" width="205" height="143" rx="19.5"/>
+  <text class="t1" x="878" y="138" font-size="15" font-weight="800">Saved plan</text>
+  <text class="t2" x="878" y="157" font-size="12.5">S3 bucket, under <tspan class="mono">pr-&lt;n&gt;/</tspan></text>
+  <rect class="wf" x="878" y="172" width="178" height="28" rx="8"/><text class="wft mono" x="888" y="190.55" font-size="13">plan.tfplan</text>
+  <rect class="wf" x="878" y="206" width="178" height="28" rx="8"/><text class="wft mono" x="888" y="224.55" font-size="13">plan.exitcode</text>
+  <path class="side" d="M596 184V156Q596 150 602 150H854"/><path class="sidehead" d="M863 150l-9 -5v10z"/>
+
+  <!-- the manual gate -->
+  <path class="gate" d="M112 280H1070"/>
+  <rect class="hum" x="164" y="267" width="196" height="26" rx="13"/><text class="humt" x="262" y="284.68" font-size="13" text-anchor="middle">a person merges the PR</text>
+
+  <!-- merge: apply.yml -->
+  <rect class="card" x="112" y="304" width="718" height="468" rx="20"/><rect class="rim" x="112.5" y="304.5" width="717" height="467" rx="19.5"/>
+  <path class="edge" d="M471 256V294"/><path class="flow" d="M471 256V294"/><path class="head" d="M471 303l-5.5 -10h11.0z"/>
+  <rect class="tile" x="126" y="316" width="36" height="36" rx="10.8"/><use href="#i-terraform" x="133.2" y="323.2" width="21.6" height="21.6"/>
+  <text class="t1 mono" x="172" y="333" font-size="16" font-weight="700">apply.yml</text>
+  <text class="t2" x="172" y="350" font-size="12.5">after the merge, or started by hand</text>
+  <rect class="tag" x="672" y="322" width="144" height="24" rx="12"/><text class="tagt" x="744" y="338.5" font-size="12.5" text-anchor="middle">one run at a time</text>
+  <path class="rule" d="M126 364H816"/>
+
+  <rect class="wf" x="126" y="376" width="160" height="28" rx="8"/><text class="wft mono" x="136" y="394.55" font-size="13">check-conditions</text>
+  <g class="t2" font-size="12.5">
+    <text x="298" y="386">stops on a skip pattern such as <tspan class="mono">[skip ci]</tspan>,</text>
+    <text x="298" y="402">then reads the mode from the checkboxes in the PR body</text>
+  </g>
+
+  <rect class="lane" x="126" y="418" width="222" height="92" rx="14"/><rect class="rim" x="126.5" y="418.5" width="221" height="91" rx="13.5"/>
+  <rect class="lane" x="360" y="418" width="222" height="92" rx="14"/><rect class="rim" x="360.5" y="418.5" width="221" height="91" rx="13.5"/>
+  <rect class="lane" x="594" y="418" width="222" height="92" rx="14"/><rect class="rim" x="594.5" y="418.5" width="221" height="91" rx="13.5"/>
+  <g class="t1 mono" font-size="14.5" font-weight="700">
+    <text x="140" y="442">normal</text>
+    <text x="374" y="442">drain</text>
+    <text x="608" y="442">destroy</text>
+  </g>
+  <rect class="tag" x="268" y="426" width="66" height="22" rx="11"/><text class="tagt" x="301" y="441.32" font-size="12" text-anchor="middle">default</text>
+  <rect class="hum" x="472" y="426" width="96" height="22" rx="11"/><text class="humt" x="520" y="441.32" font-size="12" text-anchor="middle">confirm box</text>
+  <rect class="hum" x="706" y="426" width="96" height="22" rx="11"/><text class="humt" x="754" y="441.32" font-size="12" text-anchor="middle">confirm box</text>
+  <g class="t2" font-size="12.5">
+    <text x="140" y="464">applies the saved plan</text>
+    <text x="140" y="480">from the pull request</text>
+    <text x="374" y="464">cordons every node, drains</text>
+    <text x="374" y="480">workers, then the control</text>
+    <text x="374" y="496">plane, then applies the plan</text>
+    <text x="608" y="464">terraform destroy, then an</text>
+    <text x="608" y="480">apply with no saved plan:</text>
+    <text x="608" y="496">all three VMs are recreated</text>
+  </g>
+
+  <!-- the locked apply -->
+  <rect class="lane" x="126" y="524" width="690" height="152" rx="14"/><rect class="rim" x="126.5" y="524.5" width="689" height="151" rx="13.5"/>
+  <rect class="wf" x="140" y="536" width="86" height="28" rx="8"/><text class="wft mono" x="150" y="554.55" font-size="13">apply</text><circle class="dot" cx="214" cy="550" r="3.5"/>
+  <text class="t1 mono" x="238" y="554.5" font-size="13.5">scripts/maintenance_apply.py</text>
+  <rect class="tag" x="486" y="538" width="216" height="24" rx="12"/><text class="tagt" x="594" y="554.5" font-size="12.5" text-anchor="middle">verify before every command</text>
+  <path class="wire" d="M266 590H306M442 590H482M618 590H658"/><path class="wirehead" d="M315 590l-8 -4.5v9.0z"/><path class="wirehead" d="M491 590l-8 -4.5v9.0z"/><path class="wirehead" d="M667 590l-8 -4.5v9.0z"/>
+  <rect class="wf" x="140" y="576" width="124" height="28" rx="8"/><text class="wft mono" x="150" y="594.55" font-size="13">acquire</text>
+  <rect class="wf" x="316" y="576" width="124" height="28" rx="8"/><text class="wft mono" x="326" y="594.55" font-size="13">applying</text>
+  <rect class="wf" x="492" y="576" width="124" height="28" rx="8"/><text class="wft mono" x="502" y="594.55" font-size="13">recovering</text>
+  <rect class="wf" x="668" y="576" width="134" height="28" rx="8"/><text class="wft mono" x="678" y="594.55" font-size="13">release</text>
+  <g class="t2" font-size="12.5">
+    <text x="140" y="621">drain mode cordons and</text>
+    <text x="140" y="637">drains the nodes here</text>
+    <text x="316" y="621">terraform init, then</text>
+    <text x="316" y="637">(destroy and) apply</text>
+    <text x="492" y="621">the apply succeeded</text>
+    <text x="668" y="621">lock freed, job</text>
+    <text x="668" y="637">outputs written</text>
+    <text x="140" y="662">If a command fails, the lock stays held and no dispatch is sent. A person has to release it.</text>
+  </g>
+
+  <!-- dispatch and cleanup -->
+  <path class="edge" d="M278 704H854"/><path class="flow" d="M278 704H854"/><path class="head" d="M863 704l-10 -5.5v11.0z"/>
+  <rect class="wf" x="126" y="690" width="150" height="28" rx="8"/><text class="wft mono" x="136" y="708.55" font-size="13">trigger-ansible</text>
+  <rect class="tag" x="297" y="692" width="190" height="24" rx="12"/><text class="tagt" x="392" y="708.5" font-size="12.5" text-anchor="middle">only if something changed</text>
+  <rect class="tag" x="540" y="692" width="200" height="24" rx="12"/><text class="tagt mono" x="640" y="708.5" font-size="12.5" text-anchor="middle">infrastructure-changed</text>
+  <rect class="wf" x="126" y="730" width="110" height="28" rx="8"/><text class="wft mono" x="136" y="748.55" font-size="13">cleanup</text><circle class="dot" cx="224" cy="744" r="3.5"/>
+  <text class="t2" x="248" y="748.5" font-size="12.5">deletes <tspan class="mono">pr-&lt;n&gt;/</tspan> from the bucket after a saved-plan run</text>
+
+  <!-- saved plan, downloaded by the apply job -->
+  <path class="side" d="M967 256V544Q967 550 961 550H826"/><path class="sidehead" d="M817 550l9 -5v10z"/>
+  <rect class="pill" x="873" y="408" width="188" height="24" rx="12"/><text class="pillt" x="967" y="424.5" font-size="12.5" text-anchor="middle">normal and drain apply it</text>
+
+  <!-- ansible -->
+  <rect class="card" x="864" y="652" width="206" height="108" rx="20"/><rect class="rim" x="864.5" y="652.5" width="205" height="107" rx="19.5"/>
+  <rect class="tile" x="878" y="664" width="36" height="36" rx="10.8"/><use href="#i-ansible" x="885.2" y="671.2" width="21.6" height="21.6"/>
+  <text class="t1" x="924" y="681" font-size="16" font-weight="800">ansible</text>
+  <text class="t2 mono" x="924" y="698" font-size="12.5">deploy.yml</text>
+  <text class="t2 mono" x="878" y="726" font-size="12.5">repository_dispatch</text>
+  <text class="t2" x="878" y="743" font-size="12.5">payload <tspan class="mono t1">drained_nodes</tspan></text>
+
+  <!-- drift -->
+  <rect class="card" x="112" y="800" width="958" height="76" rx="20"/><rect class="rim" x="112.5" y="800.5" width="957" height="75" rx="19.5"/>
+  <rect class="tile" x="126" y="812" width="36" height="36" rx="10.8"/><use href="#i-terraform" x="133.2" y="819.2" width="21.6" height="21.6"/>
+  <text class="t1 mono" x="172" y="829" font-size="16" font-weight="700">drift.yml</text>
+  <text class="t2" x="172" y="846" font-size="12.5">daily at 08:00 UTC, or by hand</text>
+  <rect class="wf" x="396" y="814" width="84" height="28" rx="8"/><text class="wft mono" x="406" y="832.55" font-size="13">check</text><circle class="dot" cx="468" cy="828" r="3.5"/>
+  <path class="wire" d="M482 828H500"/><path class="wirehead" d="M509 828l-8 -4.5v9.0z"/>
+  <rect class="wf" x="510" y="814" width="84" height="28" rx="8"/><text class="wft mono" x="520" y="832.55" font-size="13">report</text>
+  <text class="t2" x="396" y="862" font-size="12.5">plans against the live state</text>
+  <path class="edge" d="M596 828H632"/><path class="flow" d="M596 828H632"/><path class="head" d="M641 828l-10 -5.5v11.0z"/>
+  <rect class="chip" x="642" y="812" width="150" height="32" rx="10"/><text class="chipt" x="717" y="832.68" font-size="13" font-weight="700" text-anchor="middle">the drift issue</text>
+  <g class="t2" font-size="12.5">
+    <text x="808" y="817">opened when a plan finds drift</text>
+    <text x="808" y="833">commented on while it persists</text>
+    <text x="808" y="849">closed when the plan is clean</text>
+  </g>
+
+  <text class="t3" x="40" y="902" font-size="12.5">Started by hand, apply.yml has no saved plan: it runs terraform apply -auto-approve and always dispatches.</text>
+</svg>

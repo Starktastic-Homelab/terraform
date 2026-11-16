@@ -1,375 +1,187 @@
-<div align="center">
+<p align="center">
+  <img src="docs/diagrams/banner.svg" alt="terraform, stage 2 of 4 of Starktastic Homelab: three K3s VMs on Proxmox with 16 vCPU and 60 GB of memory, cloned from the template and applied on merge by five workflows.">
+</p>
 
-# 🏗️ Terraform — Cluster Provisioning
+<p align="center">
+  <a href="https://github.com/Starktastic-Homelab/terraform/actions/workflows/apply.yml"><img src="https://github.com/Starktastic-Homelab/terraform/actions/workflows/apply.yml/badge.svg" alt="Terraform apply"></a>
+  <a href="https://github.com/Starktastic-Homelab/terraform/actions/workflows/drift.yml"><img src="https://github.com/Starktastic-Homelab/terraform/actions/workflows/drift.yml/badge.svg" alt="Drift detection"></a>
+  <a href="https://github.com/Starktastic-Homelab/terraform/actions/workflows/validate-and-plan.yml"><img src="https://github.com/Starktastic-Homelab/terraform/actions/workflows/validate-and-plan.yml/badge.svg" alt="Validate and plan"></a>
+</p>
 
-**Declarative Proxmox VM provisioning for a K3s Kubernetes cluster**
+This repository owns the three virtual machines the homelab's K3s cluster runs on: one control plane and
+two workers, cloned on Proxmox VE from the Debian template that packer builds. Applies run in CI: a pull
+request saves a plan, merging it applies that plan under a maintenance lock, and a successful apply tells
+ansible to install K3s on the result.
 
-[![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=for-the-badge&logo=terraform&logoColor=white)](https://www.terraform.io/)
-[![Proxmox](https://img.shields.io/badge/Proxmox-E57000?style=for-the-badge&logo=proxmox&logoColor=white)](https://www.proxmox.com/)
-[![HCL](https://img.shields.io/badge/HCL-7B42BC?style=for-the-badge&logo=terraform&logoColor=white)](#)
+## Where it sits
 
-*Transforms Packer-built golden images into a fully networked, GPU-enabled Kubernetes cluster*
+<p align="center">
+  <img src="docs/diagrams/chain.svg" alt="Delivery chain of packer, terraform, ansible and apps, with terraform highlighted: it takes in the manifest pull request from packer and hands over three K3s VMs, then a dispatch to ansible.">
+</p>
 
-</div>
+Packer's build opens a pull request here that rewrites `packer-manifest.json`. The template name in that
+file becomes `var.base_vm_name`, so merging the pull request replaces all three VMs with clones of the new
+image. When an apply changes anything, this repository sends the `repository_dispatch` event
+`infrastructure-changed` to ansible, which finds the VMs by their `k3s` tags and installs the cluster; the
+[organization profile](https://github.com/Starktastic-Homelab) shows the whole chain.
 
----
+## How it works
 
-## Table of Contents
+### What Terraform creates
 
-- [Overview](#overview)
-- [Cluster Architecture](#cluster-architecture)
-- [Network Design](#network-design)
-- [VM Module](#vm-module)
-- [Packer Integration](#packer-integration)
-- [State Management](#state-management)
-- [CI/CD Automation](#cicd-automation)
-- [Prerequisites](#prerequisites)
-- [Usage](#usage)
-- [License \& Contributing](#license--contributing)
+<p align="center">
+  <img src="docs/diagrams/cluster-topology.svg" alt="Cluster topology: the Debian 13 template VM 900 is cloned into kube-master-01, kube-worker-01 and kube-worker-02 inside the k3s-csi resource pool; each VM has an address on bridges vmbr0 and vmbr1, each worker gets a GPU virtual function, and both workers are recreated when the control plane's SMBIOS UUID changes.">
+</p>
 
----
+| VM | ID | Tags | Size | `vmbr0` (management) | `vmbr1` (services) | PCI device |
+|---|---|---|---|---|---|---|
+| `kube-master-01` | 200 | `k3s,master` | 4 vCPU, 12 GB, 96 GB disk | `10.9.9.50` | `10.9.8.50` | none |
+| `kube-worker-01` | 201 | `k3s,worker` | 6 vCPU, 24 GB, 96 GB disk | `10.9.9.51` | `10.9.8.51` | GPU virtual function |
+| `kube-worker-02` | 202 | `k3s,worker` | 6 vCPU, 24 GB, 96 GB disk | `10.9.9.52` | `10.9.8.52` | GPU virtual function |
 
-## Overview
+`main.tf` calls one module, `modules/vm`, once for the control plane and once per worker. The module
+wraps a single `proxmox_vm_qemu` resource: a q35 machine with SeaBIOS and the host CPU type, a virtio
+disk with discard and an I/O thread, and a cloud-init drive that sets the `debian` user, the SSH key, the
+static addresses and the DNS server.
 
-This repository provisions the compute layer of a Kubernetes homelab — cloning Packer-built Debian templates into statically-addressed, GPU-enabled VMs on Proxmox VE. It manages:
+- **Nothing is numbered by hand.** VM IDs count up from 200, and every address is
+  `cidrhost(base_cidr, start_offset + index)` with an offset of 50. Workers continue after the control
+  plane, so IDs and addresses stay contiguous. Only `vmbr1` sets a gateway (`10.9.8.1`); the first NIC is
+  the address ansible connects to.
+- **The GPU comes from a Proxmox resource mapping.** Each worker asks for one device from the PCI mapping
+  `k3s-worker-gpus`, so no host PCI address appears in this repository.
+- **Workers follow the control plane.** A replaced control plane starts a fresh cluster, and the retained
+  CSI volumes require the old workers to disappear with it. Each worker therefore stores the control
+  plane's SMBIOS UUID in `force_recreate_on_change_of`. Proxmox issues a new UUID on every clone, so a new
+  control plane recreates both workers, and a retry after an interrupted apply still catches a worker
+  that was left behind. Worker-only changes stay independent. The rule needs exactly one control plane.
+- **Data disks belong to the CSI driver.** Proxmox CSI attaches volumes as SCSI disks, so the module
+  ignores changes to `disks[0].scsi` and manages only the boot disk and the cloud-init drive. The VMs are
+  created in the resource pool `k3s-csi`, which exists outside this repository and carries the access
+  grants, so the grants survive a VM being replaced.
 
-- **Master and worker node pools** with independent sizing
-- **Dual-NIC networking** across management and services VLANs
-- **Intel GPU passthrough** via PCI device mappings on worker nodes
-- **Cloud-init injection** for SSH keys, static IPs, and DNS configuration
+### From pull request to dispatch
 
-The template name is driven by `packer-manifest.json`, which is automatically updated via PR from the Packer build pipeline — creating a seamless image-to-cluster flow.
+<p align="center">
+  <img src="docs/diagrams/apply-flow.svg" alt="Apply flow: a pull request runs validate-and-plan.yml, which tests, plans and saves the plan to S3; after a person merges, apply.yml picks a mode, applies under the maintenance lock, dispatches ansible if something changed and deletes the saved plan; drift.yml plans every day and keeps one drift issue up to date.">
+</p>
 
----
+**On a pull request**, `validate-and-plan.yml` runs three jobs side by side. Two are offline test suites:
+one runs the locked apply against fake tools, the other plans with the real pinned provider against
+synthetic state to prove which changes recreate which VMs. The third validates and plans against the live
+state, and a fourth job posts that plan as a sticky comment. The plan file holds prior state, so it goes
+to an S3 bucket under `pr-<n>/` instead of a workflow artifact that anyone could download.
 
-## Cluster Architecture
+**A merge is an apply.** `apply.yml` reads the mode from the checkboxes in the pull request body:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cluster-architecture-dark.png">
-  <img alt="Cluster architecture" src="docs/diagrams/cluster-architecture.png">
-</picture>
+| Mode | Selected by | What runs |
+|---|---|---|
+| normal | nothing ticked | The saved plan |
+| drain | the drain box and the confirm box | Cordon every node, drain the workers and then the control plane, then the saved plan |
+| destroy | the destroy box and the confirm box | `terraform destroy`, then a fresh `terraform apply` with no saved plan |
 
-All VMs are cloned from the same immutable Packer template, then individualized via cloud-init (hostname, static IPs, SSH keys). Worker nodes additionally receive **Intel iGPU virtual functions** via PCI passthrough for hardware-accelerated transcoding and ML workloads.
+Ticking drain or destroy without the confirm box fails the run, and so does ticking both. A skip pattern
+such as `[skip ci]` in the pull request title, body or last commit message stops the run before it
+starts. Drain mode cordons everything first because draining one node at a time made the evicted pods
+pile onto the next node to be drained.
 
----
+**The apply holds a lock.** The `apply` job runs `scripts/maintenance_apply.py` on the self-hosted runner
+with the runner's `/var/lib/homelab-maintenance` directory mounted. The lock helper comes from the
+ansible repository at a pinned commit, and ansible's deploy takes the same lock. The script acquires the
+lock as `terraform-<mode>`, verifies ownership before every `kubectl` and `terraform` command, moves the
+lock through `applying` and `recovering`, and releases it at the end. A failed command leaves the lock
+held: nothing else can start, no dispatch is sent, and a person has to reconcile and release it. The
+backend has no state locking, so this lock and the workflow's `terraform-apply` concurrency group are what
+keep two applies apart.
 
-## Network Design
+**Ansible hears about changes only.** A saved plan with no changes takes and releases the lock and stops
+there. Otherwise `trigger-ansible` sends `infrastructure-changed` with the payload `drained_nodes`: the
+nodes that were schedulable before the cordon, or an empty list outside drain mode. Terraform never
+uncordons. Ansible does that after K3s is back, for the nodes on that list. After a saved-plan run,
+`cleanup` deletes the plan from the bucket.
 
-Every node is dual-homed across two isolated networks:
+Starting `apply.yml` by hand skips the saved plan only. The run still takes the lock, but it plans and
+applies in one step with `terraform apply -auto-approve`, and it always dispatches.
 
-| Network | Bridge | CIDR | Gateway | Purpose |
-|---------|--------|------|---------|---------|
-| **Management** | `vmbr0` | `10.9.9.0/24` | — | SSH, Kubernetes API, Kube-VIP HA |
-| **Services** | `vmbr1` | `10.9.8.0/24` | `10.9.8.1` | Default Internet egress, Pod overlay (Flannel), NFS, LoadBalancer traffic |
+**Drift becomes an issue.** Every day at 08:00 UTC, `drift.yml` plans against the live state. If the plan
+has changes it opens an issue labelled `drift`, or comments on the one already open. When a later plan
+comes back clean it comments and closes the issue.
 
-IP addresses are computed deterministically from a base CIDR and offset:
+## What is in the repo
 
-| Node | Management IP | Services IP | VM ID |
-|------|--------------|-------------|-------|
-| kube-master-01 | `10.9.9.50` | `10.9.8.50` | 200 |
-| kube-worker-01 | `10.9.9.51` | `10.9.8.51` | 201 |
-| kube-worker-02 | `10.9.9.52` | `10.9.8.52` | 202 |
+| Path | What it holds |
+|---|---|
+| `main.tf` | The two module calls, the address arithmetic and the rebuild cohort wiring |
+| `modules/vm/` | The `proxmox_vm_qemu` resource: disks, NICs, cloud-init, PCI and USB mappings, lifecycle rules |
+| `variables.tf`, `terraform.tfvars` | Counts, sizes, bridges, the resource pool and the cohort switch |
+| `providers.tf` | The S3 backend and the pinned `telmate/proxmox` provider |
+| `outputs.tf` | IDs, names and addresses of the nodes |
+| `packer-manifest.json` | Written by packer's pull request; only `builds[0].custom_data.vm_name` is read |
+| `scripts/maintenance_apply.py` | The locked drain and apply that `apply.yml` runs |
+| `scripts/tests/` | The two offline suites that `validate-and-plan.yml` runs |
+| `.github/workflows/` | The five workflows below |
+| `.github/actions/s3-cp/` | Composite action that copies the plan to and from the bucket |
+| `.github/PULL_REQUEST_TEMPLATE.md` | The mode checkboxes |
+| `docs/` | The maintenance runbook and the diagrams on this page |
 
-> IPs are calculated as `base_cidr + start_offset + node_index`, ensuring masters and workers form a contiguous block.
+## Workflows
 
----
+| Workflow | Runs on | What it does |
+|---|---|---|
+| `validate-and-plan.yml` | pull request | Runs the two test suites, validates, plans, saves the plan file and comments the plan on the pull request |
+| `apply.yml` | pull request merged, manual | Applies the saved plan under the maintenance lock, dispatches ansible if anything changed, deletes the saved plan |
+| `drift.yml` | daily 08:00 UTC, manual | Plans against the live state; opens, comments on or closes the drift issue |
+| `format.yml` | pull request, manual | Runs `terraform fmt` and Prettier on YAML and JSON, and commits the result |
+| `readme-images.yml` | pull request that touches Markdown or `docs/diagrams/` | Checks that every image a Markdown file references exists |
 
-## VM Module
+`validate-and-plan.yml` and `apply.yml` ignore changes to `README.md` and `renovate.json` only. Any other
+merged pull request is an apply, including one that touches nothing but `docs/`; put `[skip ci]` in its
+title.
 
-A reusable Terraform module (`modules/vm/`) encapsulates all VM provisioning logic:
+## Run it
 
-```mermaid
-flowchart TB
-    ROOT(["Root Module\nmain.tf"])
+Everything that changes infrastructure runs in CI. These checks are safe on a workstation:
 
-    ROOT ==>|"count = master_count"| MASTER["module.master_nodes\nNo PCI devices"]
-    ROOT ==>|"count = worker_count"| WORKER["module.worker_nodes\n+ GPU PCI passthrough"]
+```sh
+terraform fmt -check -recursive .
+terraform init -backend=false && terraform validate
 
-    subgraph mod["modules/vm/"]
-        VM[[proxmox_vm_qemu]]
-        VM --> CI([Cloud-Init\nUser · SSH Keys · IPs])
-        VM --> DISK[(OS Disk\nvirtio · IOThread · TRIM)]
-        VM --> NET["Network Interfaces\nUp to 16 NICs"]
-        VM --> PCI["PCI Passthrough\nUp to 15 devices"]
-        VM --> USB["USB Passthrough\nUp to 5 devices"]
-    end
+# Rebuild cohort: real provider plans in a temporary copy, never an apply
+python3 scripts/tests/test-rebuild-cohort.py
 
-    MASTER --> mod
-    WORKER --> mod
-
-    classDef root fill:#7B42BC,stroke:#6A35A3,color:#fff
-    style mod fill:#3C3C3C,color:#fff
-    class ROOT root
+# Locked apply against fake tools; needs PyYAML and the lock helper from ansible at the pinned commit
+PYTHONPATH=<ansible checkout>/scripts python3 scripts/tests/test-maintenance-workflow.py
 ```
 
-The module supports:
+A real plan needs the same environment as the plan step in `validate-and-plan.yml`:
 
-| Feature | Details |
-|---------|---------|
-| **Multi-NIC** | Dynamic network interface generation (up to 16) with per-NIC IP config |
-| **PCI Passthrough** | GPU, network cards, or any PCI device via Proxmox resource mappings |
-| **USB Passthrough** | Direct USB device access for IoT/serial hardware |
-| **Cloud-Init** | User provisioning, SSH keys, static IP assignment, DNS config |
-| **Storage** | Virtio disks with IOThread, TRIM/discard, configurable pools |
-| **Tagging** | Proxmox tags for Ansible dynamic inventory discovery |
+```sh
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_ENDPOINT_URL=...   # the S3 backend
+export PM_API_URL=... PM_API_TOKEN_ID=... PM_API_TOKEN_SECRET=...             # the Proxmox API token
+export TF_VAR_ssh_pub_key="ssh-ed25519 ..."
+export TF_VAR_base_vm_name="$(jq -r '.builds[0].custom_data.vm_name' packer-manifest.json)"
 
----
-
-## Packer Integration
-
-The `packer-manifest.json` file is the bridge between the Packer and Terraform repos:
-
-```json
-{
-  "builds": [{
-    "custom_data": {
-      "vm_name": "packer-debian-13.4.0-...",
-      "git_tag": "v13.4.0...",
-      "i915_sriov_version": "..."
-    }
-  }]
-}
-```
-
-This file is **automatically updated via PR** from the Packer build workflow. The `vm_name` field becomes the `base_vm_name` variable — the template that Terraform clones for all cluster nodes.
-
-```mermaid
-flowchart LR
-    PK(["📦 Packer Build"]) ==>|"Creates PR with\npacker-manifest.json"| PR{{"Pull Request\n+ Review"}}
-    PR ==>|Merge| TF(["🏗️ Terraform Plan"])
-    TF ==>|"Clone template"| VMs[(VMs 200–202)]
-
-    classDef packer fill:#02A8EF,stroke:#0196D4,color:#fff
-    classDef terraform fill:#7B42BC,stroke:#6A35A3,color:#fff
-    class PK packer
-    class TF terraform
-```
-
----
-
-## State Management
-
-Terraform state is stored in an **S3-compatible backend**, keeping state off local machines and enabling CI-driven workflows:
-
-| Setting | Value |
-|---------|-------|
-| **Backend** | S3-compatible (path-style) |
-| **Bucket** | `terraform-state` |
-| **Key** | `terraform.tfstate` |
-| **Locking** | Implicit via CI (single runner) |
-
----
-
-## CI/CD Automation
-
-Four workflows manage the full infrastructure lifecycle:
-
-```mermaid
-flowchart TD
-    subgraph pr["PR Phase"]
-        PR([Pull Request]) --> FMT[format.yml\nterraform fmt + Prettier]
-        PR --> VP[validate-and-plan.yml\nInit → Validate → Plan]
-        VP --> CMT>Post plan as\nPR comment]
-        VP --> S3[(Upload plan\nto S3)]
-    end
-
-    subgraph merge["Merge Phase"]
-        MERGE([Merge to Main]) ==> APP[apply.yml\nDownload plan → Apply]
-        APP -->|Normal| APPLY[Terraform Apply]
-        APP -->|Drain mode| DRAIN[Drain nodes →\nApply → Uncordon]
-        APP -->|Destroy mode| DESTROY[Terraform Destroy]
-        APPLY & DRAIN ==> DISPATCH>repository_dispatch\n→ Ansible repo]
-    end
-
-    subgraph sched["Scheduled"]
-        DAILY((Daily\n8 AM)) --> DRIFT[drift.yml\nDetect drift]
-        DRIFT -.->|Drift found| ISSUE>Create GitHub\nIssue]
-        DRIFT -.->|No drift| CLOSE["Auto-close\nexisting issue"]
-    end
-
-    classDef apply fill:#7B42BC,stroke:#6A35A3,color:#fff
-    classDef dispatch fill:#EE0000,stroke:#CC0000,color:#fff
-    classDef drift fill:#E57000,stroke:#CC6300,color:#fff
-    class APP apply
-    class DISPATCH dispatch
-    class DRIFT drift
-```
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| **validate-and-plan** | PR | Terraform init/validate/plan with PR comment preview |
-| **format** | PR | Enforces `terraform fmt` and Prettier formatting |
-| **apply** | Merge to main | Applies plan with optional drain/destroy modes via PR checkboxes |
-| **drift** | Daily at 08:00 UTC | Detects infrastructure drift, creates/closes GitHub issues |
-
-### Operational Modes
-
-The apply workflow supports three mutually exclusive modes, controlled via checkboxes in the PR template:
-
-| Mode | Behavior |
-|------|----------|
-| **Normal** | Standard `terraform apply` |
-| **Drain** | Cordon + drain cluster nodes → apply → Ansible installs k3s → readiness + uncordon → bootstrap |
-| **Destroy** | Full `terraform destroy` (requires explicit checkbox confirmation) |
-
-After a successful apply, the workflow **triggers the Ansible repo** via `repository_dispatch`, continuing the pipeline.
-
----
-
-## Prerequisites
-
-- **Proxmox VE** with API token access
-- **S3-compatible storage** for Terraform state (e.g., MinIO)
-- **Packer template** built and available on the Proxmox node
-- **Terraform** ≥ 1.5.0
-- **telmate/proxmox** provider
-
----
-
-## Usage
-
-```bash
-# Initialize providers and backend
 terraform init
-
-# Preview changes
 terraform plan
-
-# Apply infrastructure
-terraform apply
 ```
 
-> In practice, all operations run via CI. The `validate-and-plan` workflow posts a plan preview on every PR, and `apply` runs automatically on merge.
+To change the cluster, open a pull request, read the plan comment, tick a mode if the change needs one,
+and merge.
+
+## Operations
+
+- [Storage-safe maintenance](docs/storage-safe-maintenance.md): the maintenance lock, the `drained_nodes`
+  hand-off, recovery after a failed run, CSI disk ownership, coordinated control-plane replacement and
+  pool membership. It was written before activation; both switches are now set in `terraform.tfvars`.
+- [Security policy](SECURITY.md): how to report a vulnerability.
 
 ---
 
-## License & Contributing
-
-This is a personal homelab project. Feel free to use it as inspiration for your own infrastructure. If you spot an issue or have a suggestion, [open an issue](../../issues) — contributions and feedback are welcome.
-
-## Storage-safe maintenance coordination
-
-The companion Ansible maintenance PR must be merged and VM300's shared lock
-bootstrap qualified before this workflow is enabled. `apply.yml` pins the same
-Ansible helper used by Apps/Ansible and bind-mounts
-`/var/lib/homelab-maintenance:/maintenance`. A missing runner marker blocks all
-VM mutations. Normal, drain and destroy modes run under one persistent owner;
-failed plan downloads cannot reach mutation. Drain and apply share a single job,
-avoiding cross-job secret-output loss. Ownership is rechecked before every
-infrastructure command. Successful apply releases it before Ansible dispatch
-acquires its own operation. Terraform no longer waits for Kubernetes on fresh
-VMs: Ansible installs k3s first, waits for inventory nodes to become Ready, then
-restores scheduling before ArgoCD bootstrap. Ansible releases only on success.
-
-Merge the companion Ansible drain-recovery receiver **before this sender**.
-The `infrastructure-changed` payload carries `drained_nodes`, containing only
-nodes that were schedulable before Terraform cordoned them. Ansible patches only
-names still present in its current inventory; removed nodes need no recovery.
-Existing intentional cordons on surviving Node objects remain held. A new Node
-object after VM/cluster recreation has Kubernetes' normal scheduling defaults;
-this handoff does not persist operator cordons across object deletion.
-Normal/destroy operations send an empty list; old dispatches and ordinary Ansible
-push/manual runs do not perform drain recovery. If dispatch fails after successful
-apply/release, inspect both workflow runs and retry that failed dispatch with its
-original payload; do not rerun drain/apply to reconstruct the pre-drain list.
-
-Failure/cancellation leaves the operation record on VM300. Inspect the owning
-run and exact stage, stop concurrent GUI actions, and reconcile actual VM and
-writer state before explicitly releasing as the original owner. Never clear a
-lock on a timer or rerun apply to take over. A lock protects participating tools;
-it cannot constrain a Proxmox administrator using the GUI. Review current writer
-holds and generation-retirement evidence before replacing an iSCSI worker.
-
-Offline behavioral checks (with the pinned Ansible helper on `PYTHONPATH`):
-`python3 scripts/tests/test-maintenance-workflow.py`. These use fake executables,
-not live Terraform state; real cross-container locking remains a deployment gate.
-
-
-### Proxmox CSI disk ownership
-
-The shared VM module reserves SCSI disk attachments for the upstream Proxmox CSI
-controller with `ignore_changes = [disks[0].scsi]`. Terraform still manages the
-virtio0 boot disk and ide2 cloud-init disk. Do not add Terraform-managed SCSI
-volumes to this module: their later changes would also be ignored.
-
-This prevents an unrelated VM update from undoing a CSI attachment. It does not
-protect worker-owned disks from deletion: retained CSI images must be allocated
-under a separate reserved Proxmox owner ID outside this cluster's Terraform
-state. The NAS export, Proxmox storage registration, CSI credentials and retained
-PV/PVC bindings also have independent lifecycles. Never put that owner ID into
-the disposable VM range.
-
-The ownership rule was qualified with the pinned Telmate 3.0.2-rc10 provider in
-separate disposable Debian NFS and TrueNAS 25 labs: no-op/unrelated updates,
-native worker movement, PVC growth, and two complete rebuilds against each
-backend preserved the retained image. This module change alone does not install
-CSI, allocate storage or change an application PVC. Shared bootstrap,
-old-writer exclusion and GitOps resize sequencing must be integrated before
-production activation. Existing maintenance locking and PR apply modes remain
-unchanged; no Velero checkpoint is introduced.
-
-
-### Coordinated control-plane replacement
-
-The accepted policy is to rebuild all three k3s VMs when the sole control-plane
-VM is replaced. Worker-only replacements remain independent. In-place control-plane
-CPU/memory changes do not require a worker rebuild. The ordinary Packer → Terraform
-→ Ansible handoff remains the entry point; no Velero checkpoint or additional
-per-rebuild confirmation is introduced.
-
-Source preparation defaults `rebuild_workers_with_control_plane` to `false`.
-Enable it only in the separately reviewed storage activation/rebuild change:
-**first activation replaces both existing workers**, because their resource state
-has no control-plane marker yet. Keep it enabled afterwards. Turning it off also
-changes that marker and can replace workers; it is not a non-disruptive rollback.
-This source PR must have a real provider plan showing no current VM changes.
-
-When enabled, each worker stores the control-plane SMBIOS UUID in Telmate's native
-`force_recreate_on_change_of` field. The pinned provider marks this field `ForceNew`.
-A planned master replacement makes its UUID unknown and forces worker replacement;
-a completed master recreation leaves a different UUID, so a retry still replaces
-any surviving worker whose stored marker is old. Numeric VMIDs and provider resource
-IDs can be reused and are not sufficient generation identities. The policy requires
-exactly one master with a valid UUID; multi-master recovery needs separate design.
-[Provider field](https://github.com/Telmate/terraform-provider-proxmox/blob/v3.0.2-rc10/proxmox/resource_vm_qemu.go).
-
-The existing apply workflow dispatches Ansible only after Terraform succeeds.
-Packer guests have no k3s installation, so a new master cannot bootstrap its fresh
-cluster before worker replacement finishes through that workflow. Failed apply
-retains maintenance ownership and skips Ansible; this change does not authorize
-clearing that lock, bypassing the pipeline, using targeted production applies or
-reattaching storage to an unfenced old writer. Full destroy mode keeps its existing
-sequence. NAS exports, external image ownership and retained disks stay outside
-this VM lifecycle.
-
-`python3 scripts/tests/test-rebuild-cohort.py` runs real pinned-provider plans in a
-temporary local backend with synthetic state, a closed loopback API endpoint, API
-permission probing disabled and refresh disabled. It never applies. Initial provider
-installation may need network access. The checks cover no-op and in-place changes,
-master/worker/image replacement, interrupted replacement retries, inert source
-defaults, first activation and missing master identity. Runtime power-off/deletion,
-UUID regeneration, retained storage survival and the integrated Ansible handoff still
-need disposable-lab qualification before activation. The paired drain handoff moves
-readiness and uncordoning after Ansible installs k3s and before application bootstrap;
-offline checks and a no-op production plan do not qualify a live replacement.
-
-### Persistent CSI resource-pool membership
-
-`k3s_resource_pool` defaults to `null`, preserving existing VM placement. After
-separately creating and qualifying the shared CSI pool with Ansible's manual
-`proxmox-csi-storage.yml`, set it to that pool's name in the reviewed activation PR.
-The existing Proxmox provider then assigns both control-plane and worker VMs to
-the pool during creation and keeps membership on replacement. Enrollment of
-existing VMs is an in-place update in the pinned provider's offline plans.
-
-The pool itself and CSI user/token grants are external shared infrastructure;
-Terraform neither creates nor destroys them. This matters because VM-specific
-ACLs disappear with VM deletion, while pool grants can cover replacement VMs.
-Keep the pool limited to k3s VMs and keep the reserved image-owner ID outside
-all VM/container allocations. Never add NAS storage or unrelated VMs to this pool.
-The pool must exist before enrollment; a source merge with the default `null`
-does not activate membership or grant CSI access. Integrated permissions and
-replacement behavior still need disposable-lab qualification before activation.
-
-The provider-plan regression suite also covers pool enrollment, stable membership
-and membership after worker replacement, without API access or an apply.
+<p align="center">
+  Part of <a href="https://github.com/Starktastic-Homelab"><b>Starktastic Homelab</b></a>:
+  <a href="https://github.com/Starktastic-Homelab/packer">packer</a> ·
+  <a href="https://github.com/Starktastic-Homelab/terraform">terraform</a> ·
+  <a href="https://github.com/Starktastic-Homelab/ansible">ansible</a> ·
+  <a href="https://github.com/Starktastic-Homelab/apps">apps</a><br>
+  <sub>Product logos in the diagrams are trademarks of their owners and are used only to label the components.</sub>
+</p>
