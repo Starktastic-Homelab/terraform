@@ -11,7 +11,7 @@ overview is `../CLAUDE.md`.
   Only `README.md`/`renovate.json` are path-ignored: docs-only PRs need `[skip ci]` in the PR title.
 - PR-body checkboxes (`.github/PULL_REQUEST_TEMPLATE.md`) pick drain or destroy mode (confirm box
   required). Destroy = `destroy -auto-approve` then `apply -auto-approve`: everything is recreated.
-- `workflow_dispatch` on `apply.yml` runs `apply -auto-approve` with no reviewed plan and always
+- `workflow_dispatch` on `apply.yml` plans and applies that unreviewed plan (CSI wwn guard applies) and always
   dispatches Ansible. Packer's `packer-build-<run>` PRs are normal applies that replace every VM.
 - Branch protection: required checks, 0 approvals, admin bypass. TODO(ben): verify intended policy
   (Packer-triggered base-VM applies auto-approved; template changes need PR approval); unenforced today.
@@ -50,6 +50,11 @@ next. Never commit `.terraform/`, `.terraform.lock.hcl` or `*.tfplan`.
 - Worker IPs/VMIDs are offset by `master_count` (`main.tf`); NIC 0 (`ipconfig0`) is Ansible's address.
 - CSI owns data disks: `lifecycle.ignore_changes` covers `disks[0].scsi` (`modules/vm/main.tf`). Never add
   Terraform-managed SCSI disks. Pool `k3s-csi` and the CSI image owner exist outside this repo.
+- Any in-place update of a VM holding CSI disks strips `wwn=` from every SCSI slot (provider bug, outage
+  2026-11-16), whatever the plan diff shows. `scripts/csi_wwn_guard.py` warns in the plan comment and
+  `maintenance_apply.py` refuses such an apply unless the PR-body box (or dispatch input
+  `accept_csi_wwn_loss`) accepts it; then restore wwn by hand (`docs/storage-safe-maintenance.md`
+  "Proxmox CSI disk ownership").
 - Maintenance lock (`docs/storage-safe-maintenance.md`): failed runs keep the lock. Never
   clear it on a timer or rerun apply to take it over; if only the dispatch failed, retry it with its
   original payload. No targeted production applies.

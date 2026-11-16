@@ -88,6 +88,14 @@ jobs:
           
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
+      # Warns in the PR comment before merge; scripts/maintenance_apply.py is the hard stop.
+      # Only VM addresses are printed; the plan JSON never leaves this step.
+      - name: Check for VM updates that strip Proxmox CSI wwn
+        run: |
+          apk add --no-cache python3
+          terraform show -json plan.tfplan | python3 scripts/csi_wwn_guard.py | tee -a plan.log
+          base64 plan.log > plan.log.b64
+
       # The saved plan holds prior state, so it goes straight to S3: an artifact
       # of this public repo is downloadable by anyone.
       - name: Install AWS CLI and bash for the local S3 composite action

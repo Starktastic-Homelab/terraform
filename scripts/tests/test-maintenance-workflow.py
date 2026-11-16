@@ -13,6 +13,17 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 from maintenance_apply import execute
+from csi_wwn_guard import ACK_TEXT, scsi_updates
+
+def vm(address,actions,slot=None):
+    # Shape of `terraform show -json` for telmate/proxmox 3.0.2-rc10 (disks/scsi/scsiN/{disk,passthrough,...}).
+    scsi={'scsi%d'%n:[] for n in range(31)}
+    if slot:scsi['scsi1']=[{'cdrom':[],'cloudinit':[],'disk':[],'passthrough':[],**slot}]
+    before={'name':address,'disks':[{'scsi':[scsi],'virtio':[{'virtio0':[{'disk':[{'size':'32G'}]}]}]}]}
+    return {'address':address,'type':'proxmox_vm_qemu','change':{'actions':actions,'before':None if actions==['create'] else before}}
+
+CSI_DISK={'disk':[{'storage':'k3s-block','size':'8G','serial':'','wwn':''}]}
+WORKER='module.workers.proxmox_vm_qemu.vm["kube-worker-01"]'
 
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
@@ -22,6 +33,7 @@ class WorkflowTests(unittest.TestCase):
         self.env=patch.dict(os.environ,{'HOMELAB_RUNNER_INSTANCE':'runner','MAINTENANCE_OWNER':'terraform/test/1'})
         self.env.start();self.addCleanup(self.env.stop)
         self.commands=[];self.fail=None
+        self.plan={'resource_changes':[]}
         self.output=self.root/'output'
         self.output_env=patch.dict(os.environ,{'GITHUB_OUTPUT':str(self.output)})
         self.output_env.start();self.addCleanup(self.output_env.stop)
@@ -32,6 +44,7 @@ class WorkflowTests(unittest.TestCase):
         # Every actual mutation sees the real persisted ownership record.
         self.assertTrue((self.lock/'operation.json').exists())
         if self.fail and self.fail in ' '.join(args):raise subprocess.CalledProcessError(1,args)
+        if args[:3]==['terraform','show','-json']:return subprocess.CompletedProcess(args,0,stdout=json.dumps(self.plan))
         stdout=json.dumps({'items':[{'metadata':{'name':'worker','labels':{}}},
                                    {'metadata':{'name':'master','labels':{'node-role.kubernetes.io/control-plane':'true'}}},
                                    {'metadata':{'name':'held-worker','labels':{}},'spec':{'unschedulable':True}}]})
@@ -42,11 +55,17 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(mode=mode),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
                 self.commands=[];execute(mode,False,self.lock)
                 self.assertFalse((self.lock/'operation.json').exists())
-                self.assertIn(['terraform','apply','-auto-approve'],self.commands)
+                apply=['terraform','apply','-auto-approve' if mode=='destroy' else 'plan.tfplan']
+                self.assertIn(apply,self.commands)
                 if mode=='destroy':self.assertIn(['terraform','destroy','-auto-approve'],self.commands)
+                else:
+                    # A dispatch without a PR plan still applies only a plan the CSI guard has read.
+                    self.assertLess(self.commands.index(['terraform','plan','-out=plan.tfplan']),self.commands.index(['terraform','show','-json','plan.tfplan']))
+                    self.assertLess(self.commands.index(['terraform','show','-json','plan.tfplan']),self.commands.index(apply))
                 if mode=='drain':
-                    self.assertLess(self.commands.index(['kubectl','cordon','worker']),self.commands.index(['terraform','apply','-auto-approve']))
-                    self.assertFalse(any(cmd[0]=='kubectl' for cmd in self.commands[self.commands.index(['terraform','apply','-auto-approve'])+1:]))
+                    self.assertLess(self.commands.index(['terraform','show','-json','plan.tfplan']),self.commands.index(['kubectl','cordon','worker']))
+                    self.assertLess(self.commands.index(['kubectl','cordon','worker']),self.commands.index(apply))
+                    self.assertFalse(any(cmd[0]=='kubectl' for cmd in self.commands[self.commands.index(apply)+1:]))
                 output=dict(line.split('=',1) for line in self.output.read_text().splitlines())
                 self.assertEqual(json.loads(output['drained_nodes']), ['worker','master'] if mode=='drain' else [])
 
@@ -87,6 +106,72 @@ class WorkflowTests(unittest.TestCase):
         output=dict(line.split('=',1) for line in self.output.read_text().splitlines())
         self.assertEqual(output['has_changes'],'false')
         self.assertEqual(json.loads(output['drained_nodes']),[])
+
+    def test_csi_wwn_guard_refuses_before_any_mutation_and_releases_lock(self):
+        Path('plan.tfplan').write_bytes(b'fixture');Path('plan.exitcode').write_text('2')
+        self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
+        for mode,saved in [('normal',True),('drain',True),('normal',False),('drain',False)]:
+            with self.subTest(mode=mode,saved=saved),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+                self.commands=[]
+                with self.assertRaisesRegex(SystemExit,re.escape(WORKER)):execute(mode,saved,self.lock)
+                self.assertFalse(any(cmd[0]=='kubectl' or cmd[:2]==['terraform','apply'] for cmd in self.commands))
+                # Nothing changed, so the refusal must not strand the maintenance lock.
+                self.assertFalse((self.lock/'operation.json').exists())
+                self.assertFalse(self.output.exists())
+
+    def test_csi_wwn_ack_lets_the_apply_through(self):
+        Path('plan.tfplan').write_bytes(b'fixture');Path('plan.exitcode').write_text('2')
+        self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
+        for ack,allowed in [('false',False),('TRUE',False),('true',True)]:
+            with self.subTest(ack=ack),patch.dict(os.environ,{'CSI_WWN_ACK':ack}),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+                self.commands=[]
+                if allowed:
+                    self.assertTrue(execute('normal',True,self.lock))
+                    self.assertIn(['terraform','apply','plan.tfplan'],self.commands)
+                else:
+                    with self.assertRaises(SystemExit):execute('normal',True,self.lock)
+
+    def test_destroy_mode_skips_the_guard(self):
+        self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
+        with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):execute('destroy',False,self.lock)
+        self.assertNotIn(['terraform','show','-json','plan.tfplan'],self.commands)
+
+class CsiWwnGuardTests(unittest.TestCase):
+    def test_only_in_place_updates_of_vms_holding_scsi_disks_are_flagged(self):
+        plan={'resource_changes':[
+            vm('update-csi-disk',['update'],CSI_DISK),
+            vm('update-passthrough',['update'],{'passthrough':[{'file':'/dev/sdb'}]}),
+            vm('update-no-scsi',['update']),
+            vm('update-scsi-cdrom-only',['update'],{'cdrom':[{'iso':'x.iso'}]}),
+            vm('replace-csi-disk',['delete','create'],CSI_DISK),
+            vm('create',['create']),
+            vm('noop-csi-disk',['no-op'],CSI_DISK),
+            {'address':'other','type':'null_resource','change':{'actions':['update'],'before':{}}}]}
+        self.assertEqual(scsi_updates(plan),['update-csi-disk','update-passthrough'])
+        self.assertEqual(scsi_updates({}),[])
+
+    def test_cli_reports_without_failing(self):
+        script=ROOT/'scripts/csi_wwn_guard.py'
+        for plan,expect in [({'resource_changes':[vm(WORKER,['update'],CSI_DISK)]},'WARNING: '),({'resource_changes':[]},'No in-place')]:
+            result=subprocess.run([sys.executable,'-I',str(script)],input=json.dumps(plan),text=True,capture_output=True,check=True)
+            self.assertTrue(result.stdout.startswith(expect),result.stdout)
+
+    def test_ack_text_matches_workflow_and_template(self):
+        import yaml
+        doc=yaml.safe_load((ROOT/'.github/workflows/apply.yml').read_text())
+        check=doc['jobs']['check-conditions']['steps'][0]['run']
+        self.assertIn(r"\- \[x\] "+ACK_TEXT,check)
+        self.assertIn('- [ ] '+ACK_TEXT,(ROOT/'.github/PULL_REQUEST_TEMPLATE.md').read_text())
+        # A skip pattern in the PR body skips apply entirely, so the ack text must not contain one.
+        self.assertNotRegex(ACK_TEXT,r'(?i)\[(skip ci|ci skip|no ci|skip actions|actions skip)\]')
+        self.assertEqual(doc['jobs']['apply']['env']['CSI_WWN_ACK'],'${{ needs.check-conditions.outputs.csi_wwn_ack }}')
+        self.assertEqual(doc['jobs']['check-conditions']['outputs']['csi_wwn_ack'],'${{ steps.check.outputs.csi_wwn_ack }}')
+        self.assertIn('accept_csi_wwn_loss',doc[True]['workflow_dispatch']['inputs'])
+        plan=yaml.safe_load((ROOT/'.github/workflows/validate-and-plan.yml').read_text())['jobs']['validate-and-plan']['steps']
+        names=[x.get('name') for x in plan]
+        guard=names.index('Check for VM updates that strip Proxmox CSI wwn')
+        self.assertLess(names.index('Create Terraform plan'),guard)
+        self.assertLess(guard,names.index('Upload plan log artifact'))
 
 class WiringTests(unittest.TestCase):
     def test_only_one_mutating_job_and_download_failure_cannot_reach_it(self):
