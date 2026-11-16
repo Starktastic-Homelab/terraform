@@ -11,12 +11,12 @@ proxmox: Proxmox VE Host {
   icon: ./icons/proxmox.svg
 
   master: Control Plane {
-    m1: "kube-master-01\n4 vCPU · 16 GB RAM" {icon: ./icons/kubernetes.svg}
+    m1: "kube-master-01\n4 vCPU · 12 GB RAM" {icon: ./icons/kubernetes.svg}
   }
 
   workers: Worker Pool {
-    w1: "kube-worker-01\n6 vCPU · 28 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
-    w2: "kube-worker-02\n6 vCPU · 28 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
+    w1: "kube-worker-01\n6 vCPU · 24 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
+    w2: "kube-worker-02\n6 vCPU · 24 GB RAM\nIntel iGPU VF" {icon: ./icons/kubernetes.svg}
   }
 
   os: "os_storage (NVMe)\nVM root disks" {shape: cylinder}

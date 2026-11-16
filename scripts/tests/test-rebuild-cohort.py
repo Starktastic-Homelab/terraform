@@ -113,6 +113,8 @@ def main():
         noop = {node: ['no-op'] for node in NODES}
         check('unchanged', state, noop, enabled)
         check('master in-place update', state, dict(noop, **{MASTER: ['update']}), enabled, '-var=master_memory=4096')
+        check('worker in-place update', state, dict(noop, **{node: ['update'] for node in WORKERS}),
+              enabled, '-var=worker_memory=4096')
         check('replace master', state, {node: ['delete', 'create'] for node in NODES}, enabled, '-replace=' + MASTER)
         check('replace one worker', state, dict(noop, **{WORKERS[0]: ['delete', 'create']}), enabled, '-replace=' + WORKERS[0])
         check('Packer image change', state, {node: ['delete', 'create'] for node in NODES}, enabled, '-var=base_vm_name=new-template')
@@ -147,7 +149,7 @@ def main():
         refusal = run(root, 'plan', '-refresh=false', '-input=false', '-no-color', enabled, success=False)
         assert refusal.returncode != 0 and 'exactly one control-plane VM' in refusal.stdout + refusal.stderr
         print('missing master UUID refused: passed', flush=True)
-        print('13 offline real-provider planning checks passed; no API access or apply.')
+        print('14 offline real-provider planning checks passed; no API access or apply.')
 
 
 if __name__ == '__main__':
