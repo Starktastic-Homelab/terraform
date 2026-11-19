@@ -138,7 +138,12 @@ class StorageRoot(unittest.TestCase):
         vm = self.planned_vm()
         self.assertEqual((vm['clone'][0]['vm_id'], vm['clone'][0]['full']), (902, True))
         disks = {d['interface']: d for d in vm['disk']}
-        self.assertEqual(sorted(disks), ['virtio1', 'virtio2'])
+        self.assertEqual(sorted(disks), ['virtio0', 'virtio1', 'virtio2'])
+        # The cloned root disk, at the template's datastore and size: other values move or grow it at clone.
+        root = disks['virtio0']
+        self.assertEqual((root['datastore_id'], root['size'], root['discard'], root['replicate']),
+                         ('local-zfs', 4, 'on', False))
+        self.assertFalse(root.get('path_in_datastore'))
         for expected in DISKS:
             disk = disks[expected['interface']]
             for key in ('datastore_id', 'path_in_datastore', 'size'):
@@ -148,6 +153,26 @@ class StorageRoot(unittest.TestCase):
         drifted = copy.deepcopy(self.state)
         next(d for d in self.vm(drifted)['disk'] if d['interface'] == 'virtio1')['size'] = 65
         self.assertNotIn('delete', actions(self.plan_against(drifted))[VM])
+
+    def test_root_disk_added_to_existing_state(self):
+        # State written before the root disk was declared holds only the data disks (bpg reads back
+        # only declared interfaces). Adding virtio0 must be an in-place update that keeps each data
+        # disk on its own volume, never a replacement or a shifted path.
+        old = copy.deepcopy(self.state)
+        self.vm(old)['disk'] = [d for d in self.vm(old)['disk'] if d['interface'] != 'virtio0']
+        change = next(r['change'] for r in self.plan_against(old)['resource_changes'] if r['address'] == VM)
+        self.assertEqual(change['actions'], ['update'])
+        after = {d['interface']: d for d in change['after']['disk']}
+        self.assertEqual(sorted(after), ['virtio0', 'virtio1', 'virtio2'])
+        for expected in DISKS:
+            self.assertEqual(after[expected['interface']]['path_in_datastore'], expected['path_in_datastore'])
+        self.assertNotIn(after['virtio0'].get('path_in_datastore'), [d['path_in_datastore'] for d in DISKS])
+        self.assertEqual((after['virtio0']['datastore_id'], after['virtio0']['size']), ('local-zfs', 4))
+
+    def test_data_disk_needs_path(self):
+        for bad in (dict(DISKS[0], path_in_datastore=''), dict(DISKS[0], interface='virtio0')):
+            result = self.plan_against(self.state, '-var=data_disks=' + json.dumps([bad, DISKS[1]]), success=False)
+            self.assertIn('Every data disk needs a path_in_datastore', result.stdout + result.stderr)
 
     def test_destroy_keeps_unreferenced_disks(self):
         vm = self.planned_vm()
@@ -177,9 +202,16 @@ class StorageRoot(unittest.TestCase):
         self.assertIn('ssh_pub_keys', self.created['configuration']['root_module']['variables'])
         self.assertTrue(self.created['configuration']['root_module']['variables']['ssh_pub_keys']['sensitive'])
 
+    def test_pool_is_lab_only(self):
+        # Production sends no pool; the ADR 0017 lab token is scoped to /pool/lab-storage (per-VMID ACLs die on destroy).
+        self.assertIsNone(self.planned_vm().get('pool_id'))
+        lab = self.plan_against(self.state, '-var=pool_id=lab-storage')
+        after = next(r['change']['after'] for r in lab['resource_changes'] if r['address'] == VM)
+        self.assertEqual(after['pool_id'], 'lab-storage')
+
     def test_startup_ignored_and_cache_none(self):
         self.assertEqual({d['interface']: d['cache'] for d in self.planned_vm()['disk']},
-                         dict(virtio1='none', virtio2='none'))
+                         dict(virtio0='none', virtio1='none', virtio2='none'))
         started = copy.deepcopy(self.state)
         self.vm(started)['startup'] = [dict(order=2, up_delay=60, down_delay=-1)]
         self.assertEqual(actions(self.plan_against(started)), {VM: ['no-op'], GENERATION: ['no-op']})

@@ -7,6 +7,7 @@ resource "proxmox_virtual_environment_vm" "storage" {
   vm_id     = var.vm_id
   name      = var.name
   tags      = var.tags
+  pool_id   = var.pool_id
 
   clone {
     vm_id = var.storage_template_vmid
@@ -72,6 +73,21 @@ resource "proxmox_virtual_environment_vm" "storage" {
       iothread          = true
       cache             = "none"
     }
+  }
+
+  # The cloned root disk, declared because on any disk change bpg deletes every live disk the config
+  # leaves out (ADR 0017 lab F10). Must equal packer source-base.pkr.hcl `disks`: the schema defaults
+  # (local-lvm, 8 GiB) would move or grow it at clone, and a smaller size fails the create.
+  # Keep it after the data disks: state from before this block lists them at indices 0-1, and
+  # path_in_datastore (computed) carries over by index, so a root disk first would take virtio1's path.
+  disk {
+    interface    = "virtio0"
+    datastore_id = "local-zfs"
+    size         = 4
+    discard      = "on"
+    cache        = "none"
+    iothread     = false
+    replicate    = false
   }
 
   stop_on_destroy                      = true

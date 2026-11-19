@@ -80,6 +80,18 @@ variable "data_disks" {
     size              = number
   }))
   description = "Existing volumes owned by a placeholder VMID, attached in place (size in GiB)"
+
+  validation {
+    # A missing path would reuse whatever volume state holds at that index; virtio0 is the root disk.
+    condition     = alltrue([for d in var.data_disks : d.path_in_datastore != null && d.path_in_datastore != "" && d.interface != "virtio0"])
+    error_message = "Every data disk needs a path_in_datastore and an interface other than virtio0."
+  }
+}
+
+variable "pool_id" {
+  type        = string
+  default     = null
+  description = "Resource pool for the VM; null in production. The ADR 0017 lab token is scoped to its pool, because destroying a VM drops its /vms/<id> ACLs"
 }
 
 variable "tags" {
