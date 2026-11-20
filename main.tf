@@ -65,6 +65,9 @@ module "worker_nodes" {
   cores  = var.worker_cores
   memory = var.worker_memory
 
+  # One virtio queue per vCPU, so receive work is not pinned to one guest CPU.
+  network_queues = var.worker_cores
+
   ciuser  = var.username
   sshkeys = var.ssh_pub_key
 

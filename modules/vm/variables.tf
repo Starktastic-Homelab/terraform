@@ -71,6 +71,12 @@ variable "network_bridges" {
   default     = ["vmbr0"]
 }
 
+variable "network_queues" {
+  type        = number
+  description = "virtio multiqueue count for every NIC; null keeps the single-queue default"
+  default     = null
+}
+
 variable "cloudinit_storage" {
   type        = string
   description = "Storage location for cloud-init disk"

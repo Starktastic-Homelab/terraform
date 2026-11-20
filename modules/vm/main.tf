@@ -61,6 +61,7 @@ resource "proxmox_vm_qemu" "vm" {
       id     = index(var.network_bridges, network.value)
       model  = "virtio"
       bridge = network.value
+      queues = var.network_queues
     }
   }
 
