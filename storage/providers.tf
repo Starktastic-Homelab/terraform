@@ -16,7 +16,7 @@ terraform {
   required_providers {
     proxmox = {
       source = "bpg/proxmox"
-      # Newest release on or before 2026-10-26 (ADR 0017 lab pin).
+      # Newest release on or before 2026-10-26; the version ADR 0017's lab qualified.
       version = "0.118.0"
     }
   }

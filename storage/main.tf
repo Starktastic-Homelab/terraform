@@ -7,7 +7,6 @@ resource "proxmox_virtual_environment_vm" "storage" {
   vm_id     = var.vm_id
   name      = var.name
   tags      = var.tags
-  pool_id   = var.pool_id
 
   clone {
     vm_id = var.storage_template_vmid

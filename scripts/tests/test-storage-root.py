@@ -202,12 +202,11 @@ class StorageRoot(unittest.TestCase):
         self.assertIn('ssh_pub_keys', self.created['configuration']['root_module']['variables'])
         self.assertTrue(self.created['configuration']['root_module']['variables']['ssh_pub_keys']['sensitive'])
 
-    def test_pool_is_lab_only(self):
-        # Production sends no pool; the ADR 0017 lab token is scoped to /pool/lab-storage (per-VMID ACLs die on destroy).
+    def test_no_pool_id(self):
+        # The storage VM is never in a resource pool (ADR 0017: not in the Proxmox CSI pool).
+        for name in ('main.tf', 'variables.tf'):
+            self.assertNotIn('pool_id', (STORAGE / name).read_text(), name)
         self.assertIsNone(self.planned_vm().get('pool_id'))
-        lab = self.plan_against(self.state, '-var=pool_id=lab-storage')
-        after = next(r['change']['after'] for r in lab['resource_changes'] if r['address'] == VM)
-        self.assertEqual(after['pool_id'], 'lab-storage')
 
     def test_startup_ignored_and_cache_none(self):
         self.assertEqual({d['interface']: d['cache'] for d in self.planned_vm()['disk']},

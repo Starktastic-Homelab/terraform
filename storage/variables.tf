@@ -88,12 +88,6 @@ variable "data_disks" {
   }
 }
 
-variable "pool_id" {
-  type        = string
-  default     = null
-  description = "Resource pool for the VM; null in production. The ADR 0017 lab token is scoped to its pool, because destroying a VM drops its /vms/<id> ACLs"
-}
-
 variable "tags" {
   type    = list(string)
   default = ["storage"]
