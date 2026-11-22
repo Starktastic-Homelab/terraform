@@ -213,11 +213,11 @@ class WorkflowTests(unittest.TestCase):
                 if called:main.assert_called_once_with(902,('local-zfs',4))
                 else:main.assert_not_called()
 
-    def assert_clone_refusal(self,**main):
-        self.storage_plan();self.plan=self.storage_vm(['create'])
+    def assert_clone_refusal(self,plan=None,pattern='clone source 902',**main):
+        self.storage_plan();self.plan=plan or self.storage_vm(['create'])
         with patch('maintenance_apply.subprocess.run',side_effect=self.run_command),\
                 patch('maintenance_apply.check_clone_source.main',**main):
-            with self.assertRaisesRegex(SystemExit,'902'):execute('normal',True,self.lock,workdir='storage')
+            with self.assertRaisesRegex(SystemExit,pattern):execute('normal',True,self.lock,workdir='storage')
         self.assertFalse(any(cmd[:2]==['terraform','apply'] for cmd in self.commands))
         # Nothing has changed yet, so a failed check must not leave a held lock.
         self.assertFalse((self.lock/'operation.json').exists())
@@ -225,6 +225,15 @@ class WorkflowTests(unittest.TestCase):
 
     def test_missing_clone_source_refuses_before_apply(self):
         self.assert_clone_refusal(return_value=1)
+
+    def test_unreadable_clone_inputs_refuse_and_release_lock(self):
+        no_vmid=self.storage_vm(['create']);del no_vmid['variables']
+        no_root=self.storage_vm(['create'])
+        no_root['resource_changes'][0]['change']['after']['disk']=[{'interface':'virtio1','datastore_id':'k3s-block','size':64}]
+        for name,plan in [('no storage_template_vmid',no_vmid),('no virtio0',no_root)]:
+            with self.subTest(name):
+                # The check itself would pass: a missing input alone must refuse (fail closed).
+                self.commands=[];self.assert_clone_refusal(plan,'Refusing apply: clone source',return_value=0)
 
     def test_clone_check_error_releases_lock(self):
         for error in [ssl.SSLError('bad certificate'),urllib.error.URLError('refused')]:

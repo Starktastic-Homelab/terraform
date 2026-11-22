@@ -166,6 +166,28 @@ class PlanWorkflow(unittest.TestCase):
         box, run = self.run_plan(0, 1)
         self.assertNotEqual(run.returncode, 0)
 
+    def test_stale_storage_plan_removed_when_not_planned(self):
+        # A plan uploaded by an earlier push must not survive a push that no longer plans storage: apply would use it.
+        name = 'Remove stale storage root plan from S3'
+        remove = step(self.job, 'name', name)
+        self.assertEqual(remove['if'], "steps.storage-plan.outputs.planned == 'false'")
+        upload = step(self.job, 'name', 'Upload Terraform plan and exitcode to S3')
+        for key in ('aws_access_key_id', 'aws_secret_access_key', 'aws_endpoint_url'):
+            self.assertIn(upload['with'][key], remove['env'].values(), key)
+        prefix = remove['env']['STORAGE_PLAN_PREFIX']
+        self.assertEqual(prefix, upload['with']['destination'] + 'storage/')
+        self.assertTrue(prefix.endswith(PR + 'storage/'), prefix)  # never the k3s pr-<n>/plan.*
+        steps = self.job['steps']
+        at = steps.index(remove)
+        self.assertLess(index(self.job, 'id', 'storage-plan'), at)
+        self.assertLess(index(self.job, 'name', 'Install AWS CLI and bash for the local S3 composite action'), at)
+        self.assertLess(at, len(steps) - 1)  # not after the job's last step
+        box = Sandbox(self)
+        box.fake('aws', 'echo "aws $*" >> "$CALLS"\n')
+        run = box.run(remove['run'], workflow_env(self.job, remove))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(box.read('calls').splitlines(), ['aws s3 rm %s --recursive --quiet' % prefix])
+
     def test_one_root_per_pr(self):
         for k3s in (0, 2):
             for storage in (0, 2):

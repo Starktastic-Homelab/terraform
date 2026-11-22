@@ -145,16 +145,19 @@ def execute(mode, saved_plan, root=Path('/maintenance'), workdir=None):
                            and 'create' in c['change']['actions']), None)
             if create:
                 # From the saved plan, not the checkout: no HCL parser here, and the checkout commit is unverified.
-                vmid = int(plan['variables']['storage_template_vmid']['value'])
-                root_disk = next(((d['datastore_id'], d['size']) for d in (create['change'].get('after') or {}).get('disk') or []
-                                  if d.get('interface') == 'virtio0'), None)
+                vmid = 'unknown'
                 try:
-                    ok = check_clone_source.main(vmid, root_disk) == 0
+                    vmid = int(plan['variables']['storage_template_vmid']['value'])
+                    root_disk = next(((d['datastore_id'], d['size']) for d in (create['change'].get('after') or {}).get('disk') or []
+                                      if d.get('interface') == 'virtio0'), None)
+                    # No planned root disk would skip the disk comparison, so it refuses (fail closed).
+                    ok = root_disk is not None and check_clone_source.main(vmid, root_disk) == 0
                 except Exception:
                     ok = False
                 if not ok:
                     release(root, owner, nonce)
-                    raise SystemExit(f'Refusing apply: clone source {vmid} is missing, not a template, or unreadable')
+                    raise SystemExit(f'Refusing apply: clone source {vmid} is missing, not a template, or unreadable,'
+                                     ' or the plan lacks its template VMID or virtio0 root disk')
         if mode == 'drain':
             nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json', capture=True).stdout)['items']
             workers = []; masters = []
