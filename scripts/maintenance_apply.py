@@ -9,6 +9,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import check_clone_source
 from maintenance_lock import acquire, verify, release, advance
 from csi_wwn_guard import acknowledged, scsi_updates, message
 
@@ -97,20 +98,24 @@ def restart_vms(targets, check_lock):
             print('::warning::Not restarted %s@%s: %s' % (vmid, node, error), flush=True)
 
 
-def execute(mode, saved_plan, root=Path('/maintenance')):
+def execute(mode, saved_plan, root=Path('/maintenance'), workdir=None):
+    """root is the lock root; workdir is the Terraform root, which applies a saved plan in normal mode only."""
     if mode not in ('normal', 'drain', 'destroy'):
         raise ValueError('Unknown apply mode')
+    if workdir and (mode != 'normal' or not saved_plan):
+        raise ValueError('--chdir applies a saved plan in normal mode only')
+    plans = Path(workdir or '.')
     changed = True
     if saved_plan and mode != 'destroy':
         try:
-            code = Path('plan.exitcode').read_text().strip()
-            if code not in ('0', '2') or not Path('plan.tfplan').is_file():
+            code = (plans / 'plan.exitcode').read_text().strip()
+            if code not in ('0', '2') or not (plans / 'plan.tfplan').is_file():
                 raise ValueError()
         except (OSError, ValueError):
             raise ValueError('PR plan or its successful exit status is missing') from None
         changed = code == '2'
     owner = os.environ['MAINTENANCE_OWNER']
-    nonce = acquire(root, 'terraform-' + mode, owner)
+    nonce = acquire(root, 'terraform-' + (workdir + '-' if workdir else '') + mode, owner)
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         print('::add-mask::' + nonce, flush=True)
 
@@ -119,7 +124,7 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
 
     def run(*args, capture=False):
         check_lock()
-        return subprocess.run(list(args), check=True, text=True, capture_output=capture)
+        return subprocess.run(list(args), check=True, text=True, capture_output=capture, cwd=workdir)
 
     drained_nodes = []
     plan = None
@@ -136,6 +141,17 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
                 raise SystemExit('Refusing apply. ' + message(hits))
             if hits:
                 print('::warning::Acknowledged: ' + message(hits), flush=True)
+            if any(c.get('type') == 'proxmox_virtual_environment_vm' and 'create' in c['change']['actions']
+                   for c in plan.get('resource_changes', [])):
+                # From the saved plan, not the checkout: no HCL parser here, and the checkout commit is unverified.
+                vmid = int(plan['variables']['storage_template_vmid']['value'])
+                try:
+                    ok = check_clone_source.main(vmid) == 0
+                except Exception:
+                    ok = False
+                if not ok:
+                    release(root, owner, nonce)
+                    raise SystemExit(f'Refusing apply: clone source {vmid} is missing, not a template, or unreadable')
         if mode == 'drain':
             nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json', capture=True).stdout)['items']
             workers = []; masters = []
@@ -164,8 +180,11 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
     # Failed mutations retain ownership and never publish a success handoff.
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            stream.write('has_changes=' + str(changed).lower() + '\n')
-            stream.write('drained_nodes=' + json.dumps(drained_nodes, separators=(',', ':')) + '\n')
+            if workdir:
+                stream.write('changed=' + str(changed).lower() + '\n')
+            else:
+                stream.write('has_changes=' + str(changed).lower() + '\n')
+                stream.write('drained_nodes=' + json.dumps(drained_nodes, separators=(',', ':')) + '\n')
     return changed
 
 
@@ -173,5 +192,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', required=True, choices=['normal', 'drain', 'destroy'])
     parser.add_argument('--saved-plan', action='store_true')
+    parser.add_argument('--chdir', help='Terraform root to apply its saved plan in (normal mode only; no dispatch outputs)')
     args = parser.parse_args()
-    execute(args.mode, args.saved_plan)
+    execute(args.mode, args.saved_plan, workdir=args.chdir)
