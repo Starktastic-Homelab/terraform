@@ -131,7 +131,9 @@ class WorkflowTests(unittest.TestCase):
                 ('pull_request_target',{'PR_BODY':'Intro\r\n'+ticked+'\r\nEnd\r\n'},True),
                 ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'true'},True),
                 ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'TRUE'},False),
-                ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'false'},False)]:
+                ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'false'},False),
+                ('workflow_dispatch',{'PR_BODY':ticked},False),  # each event reads only its own ack
+                ('pull_request_target',{'ACCEPT_CSI_WWN_LOSS':'true'},False)]:
             with self.subTest(event=event,extra=extra),patch.dict(os.environ,{'EVENT_NAME':event,**extra}),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
                 for key in {'PR_BODY','ACCEPT_CSI_WWN_LOSS'}-extra.keys():os.environ.pop(key,None)
                 self.commands=[];self.output.unlink(missing_ok=True)

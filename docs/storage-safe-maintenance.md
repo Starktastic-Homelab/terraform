@@ -56,7 +56,8 @@ without `wwn=`; after the provider's reboot the guest has no
 terraform#241: a memory-only plan took down 32 of 33 retained volumes).
 
 `scripts/csi_wwn_guard.py` therefore flags any `proxmox_vm_qemu` in-place update
-whose prior state holds a SCSI disk or passthrough. The PR plan comment prints a
+whose prior state holds a SCSI disk or passthrough, or has no `disks` list at all
+(fail closed if the provider schema changes). The PR plan comment prints a
 warning, and `scripts/maintenance_apply.py` refuses the apply (before drain, lock
 released) unless the PR body ticks "Accept that this apply strips wwn from
 Proxmox CSI disks" before merge, or a dispatch sets `accept_csi_wwn_loss`. A
