@@ -22,11 +22,22 @@ def scsi_updates(plan):
         if change.get('type') != 'proxmox_vm_qemu' or change['change']['actions'] != ['update']:
             continue
         before = change['change'].get('before') or {}
+        # shortcut: reads telmate 3.0.2-rc10's disks schema (pinned exactly); the guard lapses at Retirement 5.3.
+        if 'disks' not in before:
+            hits.append(change['address'])  # a schema this guard cannot read fails closed
+            continue
         slots = [slot for disks in before.get('disks') or [] for scsi in disks.get('scsi') or []
                  for value in scsi.values() for slot in value or []]
         if any(slot.get('disk') or slot.get('passthrough') for slot in slots):
             hits.append(change['address'])
     return hits
+
+
+def acknowledged(env):
+    """The dispatch input, or a PR-body line that is exactly the ticked box."""
+    if env.get('EVENT_NAME') == 'workflow_dispatch':
+        return env.get('ACCEPT_CSI_WWN_LOSS') == 'true'
+    return any(line.strip() == '- [x] ' + ACK_TEXT for line in env.get('PR_BODY', '').splitlines())
 
 
 def message(hits):

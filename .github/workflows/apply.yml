@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       accept_csi_wwn_loss:
-        description: Accept that this apply strips wwn from Proxmox CSI disks (restore by hand after)
+        description: Accept the loss of wwn on Proxmox CSI disks (restore by hand after)
         type: boolean
         default: false
 
@@ -30,7 +30,6 @@ jobs:
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
       apply_mode: ${{ steps.check.outputs.apply_mode }}
-      csi_wwn_ack: ${{ steps.check.outputs.csi_wwn_ack }}
     steps:
       - id: check
         env:
@@ -41,17 +40,14 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          DISPATCH_CSI_WWN_ACK: ${{ inputs.accept_csi_wwn_loss }}
         run: |
           SHOULD_RUN="false"
           APPLY_MODE="normal"
-          CSI_WWN_ACK="false"
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "✅ Manual dispatch detected."
             SHOULD_RUN="true"
             APPLY_MODE="normal"
-            [[ "$DISPATCH_CSI_WWN_ACK" == "true" ]] && CSI_WWN_ACK="true"
 
           elif [[ "$PR_MERGED" == "true" ]]; then
             COMMIT_MSG=$(gh pr view "$PR_NUMBER" \
@@ -73,10 +69,6 @@ jobs:
             DRAIN=$(echo "$PR_BODY" | grep -c '\- \[x\] Drain cluster nodes before apply' || true)
             DESTROY=$(echo "$PR_BODY" | grep -c '\- \[x\] Destroy and recreate infrastructure before apply' || true)
             CONFIRM=$(echo "$PR_BODY" | grep -c '\- \[x\] I confirm the destructive action selected above' || true)
-            # Must match csi_wwn_guard.ACK_TEXT (tested); the apply job enforces it.
-            if echo "$PR_BODY" | grep -q '\- \[x\] Accept that this apply strips wwn from Proxmox CSI disks'; then
-              CSI_WWN_ACK="true"
-            fi
 
             if [[ "$DRAIN" -gt 0 && "$DESTROY" -gt 0 ]]; then
               echo "❌ Cannot select both drain and destroy. These are mutually exclusive."
@@ -102,7 +94,6 @@ jobs:
 
           echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
           echo "apply_mode=$APPLY_MODE" >> $GITHUB_OUTPUT
-          echo "csi_wwn_ack=$CSI_WWN_ACK" >> $GITHUB_OUTPUT
 
   apply:
     name: Locked drain and apply
@@ -121,7 +112,9 @@ jobs:
       MAINTENANCE_OWNER: ${{ github.repository }}/${{ github.run_id }}/${{ github.run_attempt }}
       PYTHONPATH: ${{ github.workspace }}/maintenance-helper/scripts
       APPLY_MODE: ${{ needs.check-conditions.outputs.apply_mode }}
-      CSI_WWN_ACK: ${{ needs.check-conditions.outputs.csi_wwn_ack }}
+      # Read only by scripts/maintenance_apply.py (csi_wwn_guard.acknowledged); never put these in a run script.
+      PR_BODY: ${{ github.event.pull_request.body }}
+      ACCEPT_CSI_WWN_LOSS: ${{ inputs.accept_csi_wwn_loss }}
       EVENT_NAME: ${{ github.event_name }}
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}

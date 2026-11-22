@@ -119,17 +119,40 @@ class WorkflowTests(unittest.TestCase):
                 self.assertFalse((self.lock/'operation.json').exists())
                 self.assertFalse(self.output.exists())
 
-    def test_csi_wwn_ack_lets_the_apply_through(self):
+    def test_ack_read_by_maintenance_apply(self):
         Path('plan.tfplan').write_bytes(b'fixture');Path('plan.exitcode').write_text('2')
         self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
-        for ack,allowed in [('false',False),('TRUE',False),('true',True)]:
-            with self.subTest(ack=ack),patch.dict(os.environ,{'CSI_WWN_ACK':ack}),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
-                self.commands=[]
+        ticked='- [x] '+ACK_TEXT
+        for event,extra,allowed in [
+                ('pull_request_target',{'PR_BODY':'Intro\n'+ticked+'\n'},True),
+                ('pull_request_target',{'PR_BODY':'- [ ] '+ACK_TEXT},False),
+                ('pull_request_target',{'PR_BODY':'Do not '+ticked+' yet'},False),
+                ('pull_request_target',{},False),
+                ('pull_request_target',{'PR_BODY':'Intro\r\n'+ticked+'\r\nEnd\r\n'},True),
+                ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'true'},True),
+                ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'TRUE'},False),
+                ('workflow_dispatch',{'ACCEPT_CSI_WWN_LOSS':'false'},False)]:
+            with self.subTest(event=event,extra=extra),patch.dict(os.environ,{'EVENT_NAME':event,**extra}),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+                for key in {'PR_BODY','ACCEPT_CSI_WWN_LOSS'}-extra.keys():os.environ.pop(key,None)
+                self.commands=[];self.output.unlink(missing_ok=True)
                 if allowed:
                     self.assertTrue(execute('normal',True,self.lock))
                     self.assertIn(['terraform','apply','plan.tfplan'],self.commands)
                 else:
-                    with self.assertRaises(SystemExit):execute('normal',True,self.lock)
+                    with self.assertRaisesRegex(SystemExit,re.escape(WORKER)):execute('normal',True,self.lock)
+                    self.assertFalse(any(cmd[0]=='kubectl' or cmd[:2]==['terraform','apply'] for cmd in self.commands))
+                    self.assertFalse((self.lock/'operation.json').exists())
+                    self.assertFalse(self.output.exists())
+
+    def test_capture_is_explicit(self):
+        captured=[]
+        def record(args,**kwargs):
+            captured.append((tuple(args),kwargs['capture_output']))
+            return self.run_command(args,**kwargs)
+        with patch('maintenance_apply.subprocess.run',side_effect=record):execute('drain',False,self.lock)
+        self.assertEqual({args for args,capture in captured if capture is True},
+                         {('kubectl','get','nodes','-o','json'),('terraform','show','-json','plan.tfplan')})
+        self.assertTrue(all(capture in (True,False) for _,capture in captured))
 
     def test_destroy_mode_skips_the_guard(self):
         self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
@@ -156,22 +179,54 @@ class CsiWwnGuardTests(unittest.TestCase):
             result=subprocess.run([sys.executable,'-I',str(script)],input=json.dumps(plan),text=True,capture_output=True,check=True)
             self.assertTrue(result.stdout.startswith(expect),result.stdout)
 
-    def test_ack_text_matches_workflow_and_template(self):
+    def test_update_without_disks_key_is_flagged(self):
+        # No `disks` key means a provider schema this guard cannot read, so it fails closed.
+        plan={'resource_changes':[{'address':'x','type':'proxmox_vm_qemu','change':{'actions':['update'],'before':{'name':'x'}}}]}
+        self.assertEqual(scsi_updates(plan),['x'])
+
+    def test_ack_text_lives_in_the_guard_and_template(self):
         import yaml
-        doc=yaml.safe_load((ROOT/'.github/workflows/apply.yml').read_text())
-        check=doc['jobs']['check-conditions']['steps'][0]['run']
-        self.assertIn(r"\- \[x\] "+ACK_TEXT,check)
+        text=(ROOT/'.github/workflows/apply.yml').read_text()
+        self.assertFalse(ACK_TEXT in text,'apply.yml repeats ACK_TEXT')
+        self.assertFalse('csi_wwn_ack' in text.lower(),'apply.yml names csi_wwn_ack')
+        doc=yaml.safe_load(text)
+        env=doc['jobs']['apply']['env']
+        self.assertEqual(env['PR_BODY'],'${{ github.event.pull_request.body }}')
+        self.assertEqual(env['ACCEPT_CSI_WWN_LOSS'],'${{ inputs.accept_csi_wwn_loss }}')
+        self.assertIn('accept_csi_wwn_loss',doc[True]['workflow_dispatch']['inputs'])
+        # The body is attacker-controlled text: only env mappings may carry it, never a run script.
+        for job in doc['jobs'].values():
+            for step in job.get('steps',[]):self.assertNotIn('pull_request.body',step.get('run',''))
         self.assertIn('- [ ] '+ACK_TEXT,(ROOT/'.github/PULL_REQUEST_TEMPLATE.md').read_text())
         # A skip pattern in the PR body skips apply entirely, so the ack text must not contain one.
         self.assertNotRegex(ACK_TEXT,r'(?i)\[(skip ci|ci skip|no ci|skip actions|actions skip)\]')
-        self.assertEqual(doc['jobs']['apply']['env']['CSI_WWN_ACK'],'${{ needs.check-conditions.outputs.csi_wwn_ack }}')
-        self.assertEqual(doc['jobs']['check-conditions']['outputs']['csi_wwn_ack'],'${{ steps.check.outputs.csi_wwn_ack }}')
-        self.assertIn('accept_csi_wwn_loss',doc[True]['workflow_dispatch']['inputs'])
-        plan=yaml.safe_load((ROOT/'.github/workflows/validate-and-plan.yml').read_text())['jobs']['validate-and-plan']['steps']
-        names=[x.get('name') for x in plan]
-        guard=names.index('Check for VM updates that strip Proxmox CSI wwn')
-        self.assertLess(names.index('Create Terraform plan'),guard)
-        self.assertLess(guard,names.index('Upload plan log artifact'))
+
+    def test_plan_step_runs_the_guard(self):
+        import yaml
+        steps=yaml.safe_load((ROOT/'.github/workflows/validate-and-plan.yml').read_text())['jobs']['validate-and-plan']['steps']
+        self.assertNotIn('Check for VM updates that strip Proxmox CSI wwn',[x.get('name') for x in steps])
+        script=next(x for x in steps if x.get('name')=='Create Terraform plan')['run']
+        plan=json.dumps({'resource_changes':[vm(WORKER,['update'],CSI_DISK)]})
+        for code in [1,2]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as tmp:
+                tmp=Path(tmp);bin=tmp/'bin';bin.mkdir();(tmp/'scripts').symlink_to(ROOT/'scripts')
+                (bin/'terraform').write_text('#!/bin/sh\necho "$*" >> calls\n'
+                                             'case "$1" in plan) echo planned; exit %d;; show) cat plan.json;; esac\n'%code)
+                (bin/'apk').write_text('#!/bin/sh\nexit 0\n')
+                for f in bin.iterdir():f.chmod(0o755)
+                (tmp/'plan.json').write_text(plan)
+                env={**os.environ,'PATH':str(bin)+os.pathsep+os.environ['PATH']}
+                result=subprocess.run(['sh','-e','-c',script],cwd=tmp,env=env,text=True,capture_output=True)
+                calls=(tmp/'calls').read_text()
+                log=(tmp/'plan.log').read_text()
+                self.assertEqual(subprocess.run(['base64','-d',str(tmp/'plan.log.b64')],capture_output=True,text=True,check=True).stdout,log)
+                if code==1:
+                    self.assertNotEqual(result.returncode,0)
+                    self.assertNotIn('show',calls)
+                else:
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    self.assertIn('show -json plan.tfplan',calls)
+                    self.assertIn('WARNING: ',log);self.assertIn(WORKER,log)
 
 class WiringTests(unittest.TestCase):
     def test_only_one_mutating_job_and_download_failure_cannot_reach_it(self):
