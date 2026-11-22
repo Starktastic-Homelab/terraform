@@ -1,5 +1,8 @@
 """Run the real orchestration against fake executables and the real durable lock."""
+from contextlib import redirect_stdout
 import importlib.util
+import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -229,6 +232,149 @@ class CsiWwnGuardTests(unittest.TestCase):
                     self.assertEqual(result.returncode,0,result.stderr)
                     self.assertIn('show -json plan.tfplan',calls)
                     self.assertIn('WARNING: ',log);self.assertIn(WORKER,log)
+
+def plan_vm(index,actions,vmid,**extra):
+    change=vm('module.worker_nodes[%d].proxmox_vm_qemu.vm'%index,actions)
+    change['change']['before'].update(id='pve/qemu/%d'%vmid,**extra)
+    return change
+PLAN={'resource_changes':[plan_vm(1,['delete','create'],202,cipassword='SECRET'),plan_vm(0,['update'],201),
+                          {'address':'null_resource.x','type':'null_resource','change':{'actions':['delete'],'before':{'id':'x'}}}]}
+STATE={'values':{'root_module':{'resources':[],'child_modules':[
+    {'resources':[{'type':'proxmox_vm_qemu','values':{'id':'pve/qemu/200'}}]},
+    {'resources':[{'type':'proxmox_vm_qemu','values':{'id':'pve/qemu/201'}}],'child_modules':[]}]}}}
+
+class GracefulShutdownTests(WorkflowTests):
+    """Clean guest shutdown before Terraform's hard stop, failing open to today's behaviour."""
+    def setUp(self):
+        super().setUp()
+        self.api=[];self.api_fail=None;self.show=None;self.states={}
+        Path('plan.tfplan').write_bytes(b'fixture');Path('plan.exitcode').write_text('2');self.plan=PLAN
+        for p in [patch('maintenance_apply.pve_request',side_effect=self.pve),patch('maintenance_apply.time.sleep')]:
+            p.start();self.addCleanup(p.stop)
+
+    def run_command(self,args,**kwargs):
+        if args[:2]==['terraform','show']:
+            self.commands.append(args);self.assertTrue(kwargs.get('capture_output'))
+            if self.fail=='terraform show':raise subprocess.CalledProcessError(1,args)
+            if self.show is not None:return subprocess.CompletedProcess(args,0,stdout=self.show)
+            return subprocess.CompletedProcess(args,0,stdout=json.dumps(STATE if len(args)==3 else self.plan))
+        return super().run_command(args,**kwargs)
+
+    def pve(self,method,path,data=None):
+        self.api.append((method,path));self.commands.append(['pve',method,path])
+        self.assertTrue((self.lock/'operation.json').exists())
+        if self.api_fail and self.api_fail in path:raise OSError('HTTP 403')
+        vm=path.split('/')[4]
+        if path.endswith('/shutdown'):self.states[vm]='stopping'
+        if path.endswith('/current'):
+            state=self.states.get(vm,'running')
+            if state=='stopping':self.states[vm]='stopped'
+            return {'status':state if state!='stopping' else 'running'}
+
+    def execute(self,mode,saved=True):
+        with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+            return execute(mode,saved,self.lock)
+
+    def index(self,cmd):return self.commands.index(cmd)
+
+    def test_only_deleted_vms_shut_down_after_init_and_before_apply(self):
+        out=io.StringIO()
+        with redirect_stdout(out):self.execute('normal')
+        shut=[p for m,p in self.api if m=='POST']
+        self.assertEqual(shut,['/nodes/pve/qemu/202/status/shutdown'])
+        post=self.index(['pve','POST','/nodes/pve/qemu/202/status/shutdown'])
+        self.assertLess(self.index(['terraform','init']),post)
+        self.assertLess(self.index(['terraform','show','-json','plan.tfplan']),post)
+        self.assertLess(self.commands.index(['pve','GET','/nodes/pve/qemu/202/status/current'],post+1),self.index(['terraform','apply','plan.tfplan']))
+        self.assertIn('202@pve',out.getvalue());self.assertNotIn('SECRET',out.getvalue());self.assertNotIn('::warning',out.getvalue())
+        self.assertFalse((self.lock/'operation.json').exists())
+
+    def test_drain_shuts_down_after_draining(self):
+        self.execute('drain')
+        self.assertLess(self.index(['kubectl','drain','master','--ignore-daemonsets','--delete-emptydir-data','--disable-eviction','--timeout=120s']),
+                        self.index(['pve','POST','/nodes/pve/qemu/202/status/shutdown']))
+
+    def test_destroy_targets_every_vm_in_state_before_destroy(self):
+        self.execute('destroy',False)
+        self.assertEqual(sorted(p for m,p in self.api if m=='POST'),
+                         ['/nodes/pve/qemu/200/status/shutdown','/nodes/pve/qemu/201/status/shutdown'])
+        self.assertLess(self.index(['pve','POST','/nodes/pve/qemu/201/status/shutdown']),self.index(['terraform','destroy','-auto-approve']))
+
+    def test_dispatch_plans_then_shuts_down(self):
+        self.execute('normal',False)
+        self.assertLess(self.index(['terraform','plan','-out=plan.tfplan']),self.index(['pve','POST','/nodes/pve/qemu/202/status/shutdown']))
+        self.assertLess(self.index(['pve','POST','/nodes/pve/qemu/202/status/shutdown']),self.index(['terraform','apply','plan.tfplan']))
+
+    def test_already_stopped_vm_is_not_shut_down(self):
+        self.states['202']='stopped';self.execute('normal')
+        self.assertEqual([p for m,p in self.api if m=='POST'],[])
+
+    def test_every_failure_fails_open_and_still_applies(self):
+        cases={'api error':('normal',dict(api_fail='/shutdown')),
+               'no id':('normal',dict(plan={'resource_changes':[{'type':'proxmox_vm_qemu','change':{'actions':['delete'],'before':{}}}]})),
+               'bad id':('normal',dict(plan={'resource_changes':[{'type':'proxmox_vm_qemu','change':{'actions':['delete'],'before':{'id':'202'}}}]})),
+               'state show fails':('destroy',dict(fail='terraform show')),
+               'bad state json':('destroy',dict(show='not json'))}
+        for name,(mode,setup) in cases.items():
+            with self.subTest(name):
+                self.commands=[];self.api=[];self.states={};self.fail=None;self.api_fail=None;self.show=None;self.plan=PLAN
+                for k,v in setup.items():setattr(self,k,v)
+                out=io.StringIO()
+                with redirect_stdout(out):self.execute(mode,mode!='destroy')
+                self.assertIn('::warning::Graceful shutdown skipped',out.getvalue())
+                self.assertIn(['terraform','apply','-auto-approve' if mode=='destroy' else 'plan.tfplan'],self.commands)
+                self.assertFalse((self.lock/'operation.json').exists())
+
+    def test_timeout_fails_open(self):
+        # The VM never stops and the clock jumps past the deadline.
+        with patch('maintenance_apply.time.monotonic',side_effect=itertools.chain([0],itertools.repeat(1000))),\
+             patch('maintenance_apply.pve_request',side_effect=lambda m,p,d=None:self.api.append((m,p)) or {'status':'running'}):
+            out=io.StringIO()
+            with redirect_stdout(out):self.execute('normal')
+        self.assertIn('TimeoutError: still running: 202@pve',out.getvalue())
+        self.assertIn(['terraform','apply','plan.tfplan'],self.commands)
+
+    def test_failed_apply_restarts_targets_and_keeps_lock(self):
+        self.fail='terraform apply'
+        with self.assertRaises(subprocess.CalledProcessError):self.execute('normal')
+        self.assertGreater(self.index(['pve','POST','/nodes/pve/qemu/202/status/start']),self.index(['terraform','apply','plan.tfplan']))
+        self.assertTrue((self.lock/'operation.json').exists())
+
+    def test_lost_lock_aborts_before_any_api_call(self):
+        def steal(args,**kwargs):
+            if args[:2]==['terraform','show']:(self.lock/'operation.json').write_text('{}')
+            return self.run_command(args,**kwargs)
+        with patch('maintenance_apply.subprocess.run',side_effect=steal):
+            with self.assertRaises(ValueError):execute('normal',True,self.lock)
+        self.assertEqual(self.api,[]);self.assertNotIn(['terraform','apply','plan.tfplan'],self.commands)
+
+
+# The parent's tests use their own fixtures; this class only adds the shutdown cases.
+for _name in dir(WorkflowTests):
+    if _name.startswith('test_') and _name not in GracefulShutdownTests.__dict__:
+        setattr(GracefulShutdownTests,_name,None)
+
+class PveRequestTests(unittest.TestCase):
+    def test_request_shape(self):
+        import maintenance_apply
+        seen={}
+        class Response(io.BytesIO):
+            def __enter__(self):return self
+            def __exit__(self,*a):pass
+        def urlopen(request,context=None,timeout=None):
+            seen.update(url=request.full_url,method=request.get_method(),body=request.data,
+                        auth=request.get_header('Authorization'),verify=context.verify_mode,timeout=timeout)
+            return Response(b'{"data":{"status":"running"}}')
+        env={'PM_API_URL':'https://pve.test:8006/api2/json/','PM_API_TOKEN_ID':'tf@pve!ci','PM_API_TOKEN_SECRET':'s3cret'}
+        with patch.dict(os.environ,env),patch('maintenance_apply.urllib.request.urlopen',side_effect=urlopen):
+            self.assertEqual(maintenance_apply.pve_request('POST',maintenance_apply.vm_status('pve','202')+'/shutdown',{'timeout':240}),
+                             {'status':'running'})
+        self.assertEqual(seen['url'],'https://pve.test:8006/api2/json/nodes/pve/qemu/202/status/shutdown')
+        self.assertEqual((seen['method'],seen['body'],seen['auth']),('POST',b'timeout=240','PVEAPIToken=tf@pve!ci=s3cret'))
+        self.assertEqual(seen['timeout'],30)
+        with patch.dict(os.environ,env),patch('maintenance_apply.urllib.request.urlopen',side_effect=urlopen):
+            maintenance_apply.pve_request('GET','/nodes/pve/qemu/202/status/current')
+        self.assertEqual((seen['method'],seen['body']),('GET',None))
 
 class WiringTests(unittest.TestCase):
     def test_only_one_mutating_job_and_download_failure_cannot_reach_it(self):
