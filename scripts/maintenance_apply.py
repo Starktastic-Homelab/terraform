@@ -141,12 +141,15 @@ def execute(mode, saved_plan, root=Path('/maintenance'), workdir=None):
                 raise SystemExit('Refusing apply. ' + message(hits))
             if hits:
                 print('::warning::Acknowledged: ' + message(hits), flush=True)
-            if any(c.get('type') == 'proxmox_virtual_environment_vm' and 'create' in c['change']['actions']
-                   for c in plan.get('resource_changes', [])):
+            create = next((c for c in plan.get('resource_changes', []) if c.get('type') == 'proxmox_virtual_environment_vm'
+                           and 'create' in c['change']['actions']), None)
+            if create:
                 # From the saved plan, not the checkout: no HCL parser here, and the checkout commit is unverified.
                 vmid = int(plan['variables']['storage_template_vmid']['value'])
+                root_disk = next(((d['datastore_id'], d['size']) for d in (create['change'].get('after') or {}).get('disk') or []
+                                  if d.get('interface') == 'virtio0'), None)
                 try:
-                    ok = check_clone_source.main(vmid) == 0
+                    ok = check_clone_source.main(vmid, root_disk) == 0
                 except Exception:
                     ok = False
                 if not ok:

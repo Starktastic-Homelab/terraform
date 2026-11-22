@@ -77,6 +77,7 @@ resource "proxmox_virtual_environment_vm" "storage" {
   # The cloned root disk, declared because on any disk change bpg deletes every live disk the config
   # leaves out (ADR 0017 lab F10). Must equal packer source-base.pkr.hcl `disks`: the schema defaults
   # (local-lvm, 8 GiB) would move or grow it at clone, and a smaller size fails the create.
+  # The create checks it: maintenance_apply.py compares this with the template's virtio0 (check_clone_source.py).
   # Keep it after the data disks: state from before this block lists them at indices 0-1, and
   # path_in_datastore (computed) carries over by index, so a root disk first would take virtio1's path.
   disk {

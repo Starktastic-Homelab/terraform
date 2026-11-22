@@ -198,7 +198,9 @@ class WorkflowTests(unittest.TestCase):
 
     def storage_vm(self,actions):
         return {'resource_changes':[{'address':'proxmox_virtual_environment_vm.storage','type':'proxmox_virtual_environment_vm',
-                                     'change':{'actions':actions,'before':None,'after':{}}}],
+                                     'change':{'actions':actions,'before':None,'after':{'disk':[
+                                         {'interface':'virtio1','datastore_id':'k3s-block','size':64},
+                                         {'interface':'virtio0','datastore_id':'local-zfs','size':4}]}}}],
                 'variables':{'storage_template_vmid':{'value':902}}}
 
     def test_clone_check_runs_only_for_a_create(self):
@@ -208,7 +210,7 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(actions=actions),patch('maintenance_apply.subprocess.run',side_effect=self.run_command),\
                     patch('maintenance_apply.check_clone_source.main',return_value=0) as main:
                 execute('normal',True,self.lock,workdir='storage')
-                if called:main.assert_called_once_with(902)
+                if called:main.assert_called_once_with(902,('local-zfs',4))
                 else:main.assert_not_called()
 
     def assert_clone_refusal(self,**main):
