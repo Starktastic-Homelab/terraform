@@ -35,6 +35,23 @@ lock on a timer or rerun apply to take over. A lock protects participating tools
 it cannot constrain a Proxmox administrator using the GUI. Review current writer
 holds and generation-retirement evidence before replacing an iSCSI worker.
 
+### Clean shutdown before destroy
+
+The provider destroys a VM with a hard stop, so a guest loses writes that had not reached disk yet. On
+2026-11-20 that left Tempo with an empty block, which stopped its retention.
+
+Before `terraform destroy` or `apply`, after the CSI wwn guard and any drain, `maintenance_apply.py` reads the VMs the
+plan deletes (`terraform show -json plan.tfplan`, already parsed for the guard); in destroy mode it reads every VM in state. That JSON is
+parsed in memory and never printed. The script then:
+
+1. Rechecks ownership.
+2. Asks Proxmox to shut those guests down through the agent (`status/shutdown`, 240s timeout).
+3. Waits until each one reports `stopped`.
+
+This takes about 95s. Any error or timeout prints a `::warning::` and falls back to the provider's hard stop;
+only a lost lock aborts. If the apply then fails, the script tries to restart the targets before keeping the
+lock, so a stale plan doesn't leave the cluster powered off.
+
 Offline behavioral checks (with the pinned Ansible helper on `PYTHONPATH`):
 `python3 scripts/tests/test-maintenance-workflow.py`. These use fake executables,
 not live Terraform state; real cross-container locking remains a deployment gate.

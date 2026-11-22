@@ -64,6 +64,10 @@ next. Never commit `.terraform/`, `.terraform.lock.hcl` or `*.tfplan`.
 - `telmate/proxmox` is pinned to `3.0.2-rc10`; re-run the cohort test on any bump. `power_state =
   "running"` stops perpetual drift (#197), `start_at_node_boot` replaced `onboot` (#99), GPU VFs keep
   `pcie = false` (enabling it was reverted, #182).
+- telmate's destroy hard-stops the VM (`qmstop`), which tore Tempo blocks on 11-20. So after the wwn
+  guard and any drain, `maintenance_apply.py` first shuts the plan's deleted VMs down cleanly through the
+  PVE API (every VM in destroy mode, about 95s). It fails open to the hard stop with a `::warning::`, and
+  restarts the VMs if the apply then fails.
 - No backend state locking: the `terraform-apply` concurrency group and the maintenance lock serialize.
 - `drift.yml` keeps its timeout: self-hosted jobs never time out while the runner is down.
 
