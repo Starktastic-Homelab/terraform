@@ -2,27 +2,28 @@
 """Real bpg provider planning of the storage/ root, synthetic local state; never apply.
 
 Needs the terraform binary (TERRAFORM=) and the bpg provider (registry, or STORAGE_PLUGIN_DIR=).
-Like test-rebuild-cohort.py, it plans a temporary copy with refresh off, no backend and a closed
-endpoint, so production backend, provider configuration and state are never used.
+Like test-rebuild-cohort.py, it plans a temporary copy (tf_offline.py) with refresh off, a local backend
+and a closed endpoint, so production backend, provider configuration and state are never used.
 """
 import copy
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tf_offline import ENV, TERRAFORM, prepare  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 STORAGE = ROOT / 'storage'
-TERRAFORM = os.environ.get('TERRAFORM', 'terraform')
 VM = 'proxmox_virtual_environment_vm.storage'
 GENERATION = 'terraform_data.generation'
 PROVIDER = 'provider["registry.terraform.io/bpg/proxmox"]'
-ENV = {k: v for k, v in os.environ.items() if not k.startswith(('TF_', 'PM_', 'AWS_', 'PROXMOX_VE_'))}
 KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA offline-fixture'
 DISKS = [dict(interface='virtio1', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-0.raw', size=64),
          dict(interface='virtio2', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-1.raw', size=32)]
@@ -30,6 +31,9 @@ FIXTURE = dict(storage_template_vmid=902, vm_id=250, name='offline-storage',
                lan_ipv4='192.0.2.20/24', lan_gateway=None, storage_bridge='offline1',
                storage_ipv4='198.51.100.20/24', nameserver='192.0.2.1', cloudinit_datastore='local-zfs',
                ssh_pub_keys=[KEY], data_disks=DISKS, generation='1')
+# Source references to the storage root, not every mention of it (comments may name storage/).
+STORAGE_REFERENCE = re.compile(r'^\s*(source|path|config)\s*=\s*"[^"]*storage|data\s+"terraform_remote_state"', re.M)
+POOL_ID = re.compile(r'^\s*pool_id\s*=|variable\s+"pool_id"', re.M)
 
 
 def run(root, *args, success=True, env=None):
@@ -54,23 +58,8 @@ class StorageRoot(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='terraform-storage-')
         cls.root = root = Path(cls.tmp.name)
-        for source in STORAGE.glob('*.tf'):
-            shutil.copy(source, root / source.name)
-        provider = (root / 'providers.tf').read_text()
-        provider, count = re.subn(r'  backend "s3" \{.*?\n  \}\n', '', provider, flags=re.S)
-        assert count == 1, 'Expected exactly one production backend to remove'
-        provider, count = re.subn(r'provider "proxmox" \{.*?\n\}', '''provider "proxmox" {
-  endpoint  = "https://127.0.0.1:1/"
-  api_token = "offline@pve!test=00000000-0000-0000-0000-000000000000"
-  insecure  = true
-}''', provider, flags=re.S)
-        assert count == 1, 'Expected exactly one provider to isolate'
-        (root / 'providers.tf').write_text(provider)
+        prepare(STORAGE, root, os.environ.get('STORAGE_PLUGIN_DIR'))
         (root / 'fixture.auto.tfvars.json').write_text(json.dumps(FIXTURE))
-        init = ['init', '-backend=false', '-input=false', '-no-color']
-        if os.environ.get('STORAGE_PLUGIN_DIR'):
-            init.append('-plugin-dir=' + os.environ['STORAGE_PLUGIN_DIR'])
-        run(root, *init)
         cls.created = plan(root)
         cls.state = cls.state_from_plan(cls.created)
         cls.state_file = root / 'terraform.tfstate'
@@ -205,7 +194,7 @@ class StorageRoot(unittest.TestCase):
     def test_no_pool_id(self):
         # The storage VM is never in a resource pool (ADR 0017: not in the Proxmox CSI pool).
         for name in ('main.tf', 'variables.tf'):
-            self.assertNotIn('pool_id', (STORAGE / name).read_text(), name)
+            self.assertNotRegex((STORAGE / name).read_text(), POOL_ID, name)
         self.assertIsNone(self.planned_vm().get('pool_id'))
 
     def test_startup_ignored_and_cache_none(self):
@@ -225,11 +214,21 @@ class StorageRoot(unittest.TestCase):
 
     def test_root_is_independent(self):
         for source in [*ROOT.glob('*.tf'), *ROOT.glob('modules/**/*.tf')]:
-            self.assertNotIn('storage/', source.read_text(), source)
-            self.assertNotIn('../storage', source.read_text(), source)
+            self.assertNotRegex(source.read_text(), STORAGE_REFERENCE, source)
         key = re.compile(r'^\s*key\s*=\s*"([^"]+)"', re.M)
         self.assertEqual(key.findall((ROOT / 'providers.tf').read_text()), ['terraform.tfstate'])
         self.assertEqual(key.findall((STORAGE / 'providers.tf').read_text()), ['storage/terraform.tfstate'])
+
+
+class SourceGreps(unittest.TestCase):
+    def test_greps_catch_references_not_comments(self):
+        for text in ('module "s" {\n  source = "../storage"\n}\n',
+                     'data "terraform_remote_state" "s" {\n  backend = "s3"\n}\n'):
+            self.assertRegex(text, STORAGE_REFERENCE)
+        self.assertNotRegex('# The storage VM lives in storage/, its own root.\n', STORAGE_REFERENCE)
+        for text in ('  pool_id = "lab"\n', 'variable "pool_id" {\n}\n'):
+            self.assertRegex(text, POOL_ID)
+        self.assertNotRegex('# No pool_id: never in the CSI pool.\n', POOL_ID)
 
 
 if __name__ == '__main__':

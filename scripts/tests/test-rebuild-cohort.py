@@ -2,27 +2,27 @@
 """Real provider planning, synthetic local state, closed endpoint; never apply.
 
 Terraform provider mocks omit SDK ForceNew planning, so this test uses the pinned
-provider with refresh and its API permission probe disabled in a temporary copy.
+provider with refresh and its API permission probe disabled in a temporary copy (tf_offline.py).
 Production backend/provider configuration and state are never used or modified.
 """
 import copy
 import json
 import os
 from pathlib import Path
-import re
-import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tf_offline import ENV, TERRAFORM, prepare  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
-TERRAFORM = os.environ.get('TERRAFORM', 'terraform')
 MASTER = 'module.master_nodes[0].proxmox_vm_qemu.vm'
 WORKERS = [f'module.worker_nodes[{i}].proxmox_vm_qemu.vm' for i in range(2)]
 NODES = [MASTER, *WORKERS]
 OLD = '00000000-0000-4000-8000-000000000001'
 NEW = '00000000-0000-4000-8000-000000000002'
-ENV = {k: v for k, v in os.environ.items() if not k.startswith(('TF_', 'PM_', 'AWS_'))}
 
 
 def run(root, *args, success=True):
@@ -66,29 +66,14 @@ def attributes(state, address):
 def main():
     with tempfile.TemporaryDirectory(prefix='terraform-cohort-') as directory:
         root = Path(directory)
-        for source in ROOT.glob('*.tf'):
-            shutil.copy(source, root / source.name)
-        shutil.copytree(ROOT / 'modules', root / 'modules')
-        provider = (root / 'providers.tf').read_text()
-        provider, count = re.subn(r'  backend "s3" \{.*?\n  \}\n', '', provider, flags=re.S)
-        assert count == 1, 'Expected exactly one production backend to remove'
-        provider, count = re.subn(r'provider "proxmox" \{.*?\n\}', '''provider "proxmox" {
-  pm_api_url = "https://127.0.0.1:1/api2/json"
-  pm_api_token_id = "offline@pve!test"
-  pm_api_token_secret = "unused-test-placeholder"
-  pm_minimum_permission_check = false
-}''', provider, flags=re.S)
-        assert count == 1, 'Expected exactly one provider to isolate'
-        (root / 'providers.tf').write_text(provider)
+        # telmate has no env var for its permission probe, which would call the closed endpoint.
+        prepare(ROOT, root, os.environ.get('COHORT_PLUGIN_DIR'),
+                'provider "proxmox" {\n  pm_minimum_permission_check = false\n}\n')
         fixture = dict(base_vm_name='offline-template', master_count=1, worker_count=2,
                        master_cores=2, master_memory=2048, worker_cores=2, worker_memory=2048,
                        network_interfaces=[dict(bridge='offline', base_cidr='192.0.2.0/24', start_offset=10)],
                        ssh_pub_key='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA offline-fixture')
         (root / 'fixture.auto.tfvars.json').write_text(json.dumps(fixture))
-        init = ['init', '-backend=false', '-input=false', '-no-color']
-        if os.environ.get('COHORT_PLUGIN_DIR'):
-            init.append('-plugin-dir=' + os.environ['COHORT_PLUGIN_DIR'])
-        run(root, *init)
         enabled = '-var=rebuild_workers_with_control_plane=true'
         state = state_from_plan(plan(root, enabled))
         state_file = root / 'terraform.tfstate'
