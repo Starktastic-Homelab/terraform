@@ -23,6 +23,7 @@ jobs:
       - run: python3 scripts/tests/test-maintenance-workflow.py
         env:
           PYTHONPATH: ${{ github.workspace }}/maintenance-helper/scripts
+      - run: python3 scripts/tests/test-storage-ci.py
 
   rebuild-policy-tests:
     name: Offline cluster rebuild policy
@@ -96,6 +97,42 @@ jobs:
 
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
+      # A PR changes one root only (D25). python3 for bpg_env.sh comes from the step above.
+      - name: Create storage root plan
+        id: storage-plan
+        run: |
+          . scripts/bpg_env.sh
+          terraform -chdir=storage init -input=false
+          terraform -chdir=storage validate
+
+          if [ ! -f storage/terraform.tfvars ]; then
+            echo 'storage root has no terraform.tfvars: not planned' | tee -a plan.log
+            base64 plan.log > plan.log.b64
+            echo 'planned=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          terraform -chdir=storage plan -no-color -input=false -detailed-exitcode -out=plan.tfplan > storage/plan.log
+          EXIT_CODE=$?
+          set -e
+
+          cat storage/plan.log
+          echo "$EXIT_CODE" > storage/plan.exitcode
+          printf '\n## storage root\n\n' >> plan.log
+          cat storage/plan.log >> plan.log
+          base64 plan.log > plan.log.b64
+          echo 'planned=true' >> "$GITHUB_OUTPUT"
+
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "❌ Storage root plan failed with error."
+            exit 1
+          fi
+          if [ "$EXIT_CODE" -eq 2 ] && [ "$(cat plan.exitcode)" = 2 ]; then
+            echo "❌ This PR changes both the k3s root and the storage root; split it into one PR per root."
+            exit 1
+          fi
+
       # The saved plan holds prior state, so it goes straight to S3: an artifact
       # of this public repo is downloadable by anyone.
       - name: Install AWS CLI and bash for the local S3 composite action
@@ -112,6 +149,18 @@ jobs:
             plan.exitcode
           destination: s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/
 
+      - name: Upload storage root plan and exitcode to S3
+        if: steps.storage-plan.outputs.planned == 'true'
+        uses: ./.github/actions/s3-cp
+        with:
+          aws_access_key_id: ${{ secrets.S3_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.S3_SECRET_KEY }}
+          aws_endpoint_url: ${{ secrets.S3_ENDPOINT }}
+          source: |
+            storage/plan.tfplan
+            storage/plan.exitcode
+          destination: s3://${{ secrets.S3_TF_PLAN_BUCKET }}/pr-${{ github.event.pull_request.number }}/storage/
+
       - name: Upload plan log artifact
         uses: actions/upload-artifact@v7
         with:
@@ -120,7 +169,7 @@ jobs:
 
       - name: Remove saved plan from the runner workspace
         if: always()
-        run: rm -f plan.tfplan plan.exitcode plan.log plan.log.b64
+        run: rm -f plan.tfplan plan.exitcode plan.log plan.log.b64 storage/plan.tfplan storage/plan.exitcode storage/plan.log
 
   comment:
     name: Comment plan in Pull Request

@@ -32,16 +32,16 @@ FIXTURE = dict(storage_template_vmid=902, vm_id=250, name='offline-storage',
                ssh_pub_keys=[KEY], data_disks=DISKS, generation='1')
 
 
-def run(root, *args, success=True):
-    result = subprocess.run([TERRAFORM, '-chdir=' + str(root), *args], env=ENV,
+def run(root, *args, success=True, env=None):
+    result = subprocess.run([TERRAFORM, '-chdir=' + str(root), *args], env={**ENV, **(env or {})},
                             capture_output=True, text=True, timeout=300)
     if success and result.returncode:
         raise AssertionError(result.stdout + result.stderr)
     return result
 
 
-def plan(root, *args):
-    run(root, 'plan', '-refresh=false', '-input=false', '-no-color', '-out=case.tfplan', *args)
+def plan(root, *args, env=None):
+    run(root, 'plan', '-refresh=false', '-input=false', '-no-color', '-out=case.tfplan', *args, env=env)
     return json.loads(run(root, 'show', '-json', 'case.tfplan').stdout)
 
 
@@ -112,11 +112,11 @@ class StorageRoot(unittest.TestCase):
     def vm(state):
         return next(r['instances'][0]['attributes'] for r in state['resources'] if r['type'] + '.' + r['name'] == VM)
 
-    def plan_against(self, state, *args, success=True):
+    def plan_against(self, state, *args, success=True, env=None):
         self.state_file.write_text(json.dumps(state))
         if not success:
-            return run(self.root, 'plan', '-refresh=false', '-input=false', '-no-color', *args, success=False)
-        return plan(self.root, *args)
+            return run(self.root, 'plan', '-refresh=false', '-input=false', '-no-color', *args, success=False, env=env)
+        return plan(self.root, *args, env=env)
 
     def planned_vm(self):
         return next(r['values'] for r in self.created['planned_values']['root_module']['resources']
@@ -214,6 +214,14 @@ class StorageRoot(unittest.TestCase):
         started = copy.deepcopy(self.state)
         self.vm(started)['startup'] = [dict(order=2, up_delay=60, down_delay=-1)]
         self.assertEqual(actions(self.plan_against(started)), {VM: ['no-op'], GENERATION: ['no-op']})
+
+    def test_base_image_change_leaves_storage_untouched(self):
+        # A Packer image change sets TF_VAR_base_vm_name for the k3s root; it must never reach this one.
+        self.assertNotIn('base_vm_name', self.created['configuration']['root_module'].get('variables', {}))
+        for source in STORAGE.glob('*.tf'):
+            self.assertNotIn('packer-manifest', source.read_text(), source)
+        doc = self.plan_against(self.state, env={'TF_VAR_base_vm_name': 'new-template'})
+        self.assertEqual(actions(doc), {VM: ['no-op'], GENERATION: ['no-op']})
 
     def test_root_is_independent(self):
         for source in [*ROOT.glob('*.tf'), *ROOT.glob('modules/**/*.tf')]:

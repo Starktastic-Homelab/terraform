@@ -13,6 +13,10 @@ overview is `../CLAUDE.md`.
   required). Destroy = `destroy -auto-approve` then `apply -auto-approve`: everything is recreated.
 - `workflow_dispatch` on `apply.yml` plans and applies that unreviewed plan (CSI wwn guard applies) and always
   dispatches Ansible. Packer's `packer-build-<run>` PRs are normal applies that replace every VM.
+- **A PR may change one root**: the plan fails when both the k3s root and `storage/` plan changes. `storage/`
+  applies from its own saved plan (S3 `pr-<n>/storage/`) in normal mode only, after the k3s step, through
+  `maintenance_apply.py --chdir storage` under the same lock; never on dispatch or in destroy mode, and it never
+  dispatches Ansible. Without `storage/terraform.tfvars` its plan, apply and drift steps do nothing.
 - Branch protection: required checks, 0 approvals, admin bypass. TODO(ben): verify intended policy
   (Packer-triggered base-VM applies auto-approved; template changes need PR approval); unenforced today.
 
@@ -24,6 +28,7 @@ terraform init -backend=false && terraform validate   # writes .terraform/ and a
 python3 scripts/tests/test-rebuild-cohort.py          # temp copy, no backend, never applies; needs
                                                       # terraform (TERRAFORM=) + providers (COHORT_PLUGIN_DIR=)
 PYTHONPATH=<ansible@pinned-SHA>/scripts python3 scripts/tests/test-maintenance-workflow.py  # PyYAML
+python3 scripts/tests/test-storage-ci.py               # workflow wiring + step scripts under sh; PyYAML
 python3 scripts/check-readme-images.py
 ```
 
@@ -81,6 +86,8 @@ Changing a contract means changing both sides together; see `../CLAUDE.md`.
 - Inventory → ansible: VM `tags` and `ipconfig0` in `main.tf`.
 - Maintenance lock ↔ ansible: helper checked out from ansible `main` in `apply.yml` and
   `validate-and-plan.yml` (the test in `scripts/tests/test-maintenance-workflow.py` holds it there).
+- Proxmox credentials: bpg (`storage/`, `check_clone_source.py`) reads `PROXMOX_VE_*`, mapped from the same
+  `PM_*` secrets and `TF_VAR_SSH_PUB_KEY` by `scripts/bpg_env.sh`.
 - `KUBECONFIG_RAW` ← ansible (org secret; used by drain mode). CSI pool ↔ ansible/apps: `terraform.tfvars`.
 
 ## Git

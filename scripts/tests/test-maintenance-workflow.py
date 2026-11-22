@@ -481,8 +481,16 @@ class WiringTests(unittest.TestCase):
                 self.assertNotIn('${{',step.get('run',''),action)
         mutation=[(name,step) for name,j in doc['jobs'].items() for step in j.get('steps',[])
                   if 'maintenance_apply.py' in step.get('run','')]
-        self.assertEqual(len(mutation),1)
-        self.assertEqual(mutation[0][0],'apply')
+        self.assertEqual([name for name,_ in mutation],['apply','apply'])
+        # The storage root applies second, only where the k3s step applies a downloaded saved plan.
+        storage=mutation[1][1]
+        self.assertEqual(storage['id'],'apply-storage')
+        self.assertLess(steps.index(change),steps.index(storage))
+        self.assertEqual(storage['if'],download['if'])
+        for event in ['workflow_dispatch','pull_request_target']:
+            for mode in ['normal','drain','destroy']:
+                expression=storage['if'].replace('&&',' and ').replace('env.APPLY_MODE',repr(mode)).replace('github.event_name',repr(event))
+                self.assertEqual(eval(expression,{'__builtins__':{}},{}),event=='pull_request_target' and mode!='destroy',(event,mode))
         self.assertNotIn('always()',doc['jobs']['trigger-ansible']['if'])
         self.assertEqual(job['outputs']['drained_nodes'], '${{ steps.apply.outputs.drained_nodes }}')
         dispatch=doc['jobs']['trigger-ansible']
