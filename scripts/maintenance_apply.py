@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 from maintenance_lock import acquire, verify, release, advance
+from csi_wwn_guard import acknowledged, scsi_updates, message
 
 
 def execute(mode, saved_plan, root=Path('/maintenance')):
@@ -25,14 +26,25 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         print('::add-mask::' + nonce, flush=True)
 
-    def run(*args):
+    def run(*args, capture=False):
         verify(root, owner, nonce)
-        return subprocess.run(list(args), check=True, text=True, capture_output=args[:3] == ('kubectl', 'get', 'nodes'))
+        return subprocess.run(list(args), check=True, text=True, capture_output=capture)
 
     drained_nodes = []
     if changed:
+        run('terraform', 'init')
+        if mode != 'destroy':
+            # Inspect exactly what will be applied, before any drain or mutation.
+            if not saved_plan:
+                run('terraform', 'plan', '-out=plan.tfplan')
+            hits = scsi_updates(json.loads(run('terraform', 'show', '-json', 'plan.tfplan', capture=True).stdout))
+            if hits and not acknowledged(os.environ):
+                release(root, owner, nonce)  # nothing has changed yet, so the refusal holds no lock
+                raise SystemExit('Refusing apply. ' + message(hits))
+            if hits:
+                print('::warning::Acknowledged: ' + message(hits), flush=True)
         if mode == 'drain':
-            nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json').stdout)['items']
+            nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json', capture=True).stdout)['items']
             workers = []; masters = []
             for node in nodes:
                 labels = node['metadata'].get('labels', {})
@@ -45,10 +57,9 @@ def execute(mode, saved_plan, root=Path('/maintenance')):
             for name in workers + masters:
                 run('kubectl', 'drain', name, '--ignore-daemonsets', '--delete-emptydir-data', '--disable-eviction', '--timeout=120s')
         advance(root, owner, nonce, 'acquired', 'applying')
-        run('terraform', 'init')
         if mode == 'destroy':
             run('terraform', 'destroy', '-auto-approve')
-        run('terraform', 'apply', 'plan.tfplan' if saved_plan and mode != 'destroy' else '-auto-approve')
+        run('terraform', 'apply', '-auto-approve' if mode == 'destroy' else 'plan.tfplan')
         advance(root, owner, nonce, 'applying', 'recovering')
     release(root, owner, nonce)
     # Fresh guests do not run k3s yet. Ansible recovers scheduling after install.

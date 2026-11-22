@@ -85,7 +85,13 @@ jobs:
             echo "❌ Terraform Plan failed with error."
             exit 1
           fi
-          
+
+          # The wwn guard warns in the PR comment before merge; scripts/maintenance_apply.py is the hard stop.
+          # Only VM addresses are printed; the plan JSON never leaves this step.
+          apk add --no-cache python3
+          terraform show -json plan.tfplan | python3 scripts/csi_wwn_guard.py | tee -a plan.log
+          base64 plan.log > plan.log.b64
+
           echo "✅ Plan generated with Exit Code: $EXIT_CODE"
 
       # The saved plan holds prior state, so it goes straight to S3: an artifact

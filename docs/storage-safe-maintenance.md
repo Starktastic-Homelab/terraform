@@ -47,8 +47,29 @@ controller with `ignore_changes = [disks[0].scsi]`. Terraform still manages the
 virtio0 boot disk and ide2 cloud-init disk. Do not add Terraform-managed SCSI
 volumes to this module: their later changes would also be ignored.
 
-This prevents an unrelated VM update from undoing a CSI attachment. It does not
-protect worker-owned disks from deletion: retained CSI images must be allocated
+This keeps CSI slots out of the plan diff, but it does **not** make an in-place
+VM update safe. telmate/proxmox 3.0.2-rc10 (and upstream `master` as of
+2026-11-16) re-sends every `scsiN` slot from state on any update, and its nested
+`disks` block never reads or sends `wwn`. The update rewrites each CSI slot
+without `wwn=`; after the provider's reboot the guest has no
+`/dev/disk/by-id/wwn-*` and CSI cannot mount the volume (outage 2026-11-16,
+terraform#241: a memory-only plan took down 32 of 33 retained volumes).
+
+`scripts/csi_wwn_guard.py` therefore flags any `proxmox_vm_qemu` in-place update
+whose prior state holds a SCSI disk or passthrough, or has no `disks` list at all
+(fail closed if the provider schema changes). The PR plan comment prints a
+warning, and `scripts/maintenance_apply.py` refuses the apply (before drain, lock
+released) unless the PR body ticks "Accept that this apply strips wwn from
+Proxmox CSI disks" before merge, or a dispatch sets `accept_csi_wwn_loss`. A
+dispatch without a PR plan now plans first and applies that plan, so it is
+checked too. Replacements (`delete`+`create`) and destroy mode are not flagged:
+new VMs get fresh CSI attachments. Drain mode is not a workaround: the plan is
+taken before the drain. If you accept, restore each slot right after the apply:
+take `lun` (slot `scsiN`) and the wwn from each VolumeAttachment's
+`status.attachmentMetadata.DevicePath`, run `qm set <vmid> --scsiN '<same
+line>,wwn=<wwn>'`, then `qm reboot` the workers one at a time.
+
+It does not protect worker-owned disks from deletion: retained CSI images must be allocated
 under a separate reserved Proxmox owner ID outside this cluster's Terraform
 state. The NAS export, Proxmox storage registration, CSI credentials and retained
 PV/PVC bindings also have independent lifecycles. Never put that owner ID into

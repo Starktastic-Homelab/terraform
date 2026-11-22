@@ -58,7 +58,9 @@ static addresses and the DNS server.
 - **Data disks belong to the CSI driver.** Proxmox CSI attaches volumes as SCSI disks, so the module
   ignores changes to `disks[0].scsi` and manages only the boot disk and the cloud-init drive. The VMs are
   created in the resource pool `k3s-csi`, which exists outside this repository and carries the access
-  grants, so the grants survive a VM being replaced.
+  grants, so the grants survive a VM being replaced. Ignoring the slots does not make an in-place update
+  safe: the provider rewrites every SCSI slot without `wwn=`, so `scripts/csi_wwn_guard.py` flags such an
+  update and the apply refuses it unless the pull request accepts the loss.
 
 ### From pull request to dispatch
 

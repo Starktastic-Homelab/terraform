@@ -10,6 +10,11 @@ on:
       - 'README.md'
       - 'renovate.json'
   workflow_dispatch:
+    inputs:
+      accept_csi_wwn_loss:
+        description: Accept the loss of wwn on Proxmox CSI disks (restore by hand after)
+        type: boolean
+        default: false
 
 env:
   KUBECONFIG: /tmp/kubeconfig
@@ -107,6 +112,9 @@ jobs:
       MAINTENANCE_OWNER: ${{ github.repository }}/${{ github.run_id }}/${{ github.run_attempt }}
       PYTHONPATH: ${{ github.workspace }}/maintenance-helper/scripts
       APPLY_MODE: ${{ needs.check-conditions.outputs.apply_mode }}
+      # Read only by scripts/maintenance_apply.py (csi_wwn_guard.acknowledged); never put these in a run script.
+      PR_BODY: ${{ github.event.pull_request.body }}
+      ACCEPT_CSI_WWN_LOSS: ${{ inputs.accept_csi_wwn_loss }}
       EVENT_NAME: ${{ github.event_name }}
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
