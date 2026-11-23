@@ -196,14 +196,24 @@ class StorageRoot(unittest.TestCase):
             self.assertIn('Every data disk needs a distinct serial', result.stdout + result.stderr)
         self.plan_against(self.state, '-var=data_disks=' + json.dumps([dict(DISKS[0], serial='x' * 20), DISKS[1]]))
 
-    def test_production_tfvars(self):
+    @staticmethod
+    def plan_production(keys, success=True):
         # The committed storage/terraform.tfvars plus only the CI-supplied keys, no fixture.
         with tempfile.TemporaryDirectory(prefix='terraform-storage-prod-') as tmp:
             prod = Path(tmp)
             prepare(STORAGE, prod, os.environ.get('STORAGE_PLUGIN_DIR'))
             shutil.copy(STORAGE / 'terraform.tfvars', prod / 'terraform.tfvars')
-            (prod / 'keys.auto.tfvars.json').write_text(json.dumps(dict(ssh_pub_keys=[KEY])))
-            prod = plan(prod)
+            (prod / 'keys.auto.tfvars.json').write_text(json.dumps(keys))
+            if not success:
+                return run(prod, 'plan', '-refresh=false', '-input=false', '-no-color', success=False)
+            return plan(prod)
+
+    def test_production_tfvars(self):
+        # The template is CI's, from the manifest (storage_template_env.sh gives these for test-storage-ci's fixture).
+        self.assertNotIn('storage_template', (STORAGE / 'terraform.tfvars').read_text())
+        prod = self.plan_production(dict(ssh_pub_keys=[KEY], storage_template_vmid=902,
+                                         storage_template_name='packer-storage-13.7.0-1'))
+        self.assertEqual(prod['variables']['storage_template_name']['value'], 'packer-storage-13.7.0-1')
         vm = planned(prod)
         self.assertEqual((vm['clone'][0]['vm_id'], vm['vm_id'], vm['name']), (902, 101, 'storage-01'))
         self.assertIsNone(vm.get('pool_id'))
@@ -221,6 +231,14 @@ class StorageRoot(unittest.TestCase):
         self.assertEqual(vm['initialization'][0]['ip_config'][0]['ipv4'][0]['gateway'], '10.9.9.1')
         self.assertEqual([n['bridge'] for n in vm['network_device']], ['vmbr0', 'vmbr2'])
         self.assertEqual(generation_input(prod), '1')
+
+    def test_production_tfvars_needs_the_manifest(self):
+        result = self.plan_production(dict(ssh_pub_keys=[KEY]), success=False)
+        text = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('No value for required variable', text)
+        for name in ('storage_template_vmid', 'storage_template_name'):
+            self.assertIn(name, text)
 
     def test_destroy_keeps_unreferenced_disks(self):
         vm = self.planned_vm()
