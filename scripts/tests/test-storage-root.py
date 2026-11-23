@@ -129,7 +129,7 @@ class StorageRoot(unittest.TestCase):
             with self.subTest(bad=bad):
                 result = self.plan_against(self.state, '-var=storage_template_name=' + bad, success=False)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn('storage_template_name', result.stdout + result.stderr)
+                self.assertIn('storage_template_name must be a PVE VM name', result.stdout + result.stderr)
 
     def test_generation_change_refused(self):
         result = self.plan_against(self.state, '-var=generation=2', success=False)

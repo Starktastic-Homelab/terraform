@@ -334,12 +334,13 @@ class StorageTemplateEnv(unittest.TestCase):
         good = [([OTHER, TEMPLATE], ('902', 'packer-storage-13.7.0-1')),
                 ([TEMPLATE, OTHER, newer], ('903', 'packer-storage-13.7.0-2'))]  # two storage entries: the last
         bad = [[OTHER], [{k: v for k, v in TEMPLATE.items() if k != 'artifact_id'}],
-               [dict(TEMPLATE, artifact_id='abc')], [dict(TEMPLATE, custom_data={})]]
+               [dict(TEMPLATE, artifact_id='abc')], [dict(TEMPLATE, custom_data={})]] + [
+               [dict(TEMPLATE, artifact_id=v)] for v in ('902.5', '-1', '0')]  # a VMID is a positive integer
         base = {k: v for k, v in os.environ.items() if not k.startswith('TF_VAR_')}
         for builds, want in good + [(b, None) for b in bad]:
             with self.subTest(builds=builds):
                 box = Sandbox(self, manifest=builds)
-                run = box.run('. scripts/storage_template_env.sh; env', base)
+                run = box.run('. scripts/storage_template_env.sh; env | sed -n /^TF_VAR_storage_template_/p; echo "left=${entry+set}"', base)
                 lines = [l for l in run.stdout.splitlines() if l.startswith('TF_VAR_storage_template_')]
                 if want is None:
                     self.assertNotEqual(run.returncode, 0)
@@ -348,6 +349,7 @@ class StorageTemplateEnv(unittest.TestCase):
                     self.assertEqual(run.returncode, 0, run.stderr)
                     self.assertEqual(sorted(lines), ['TF_VAR_storage_template_name=' + want[1],
                                                      'TF_VAR_storage_template_vmid=' + want[0]])
+                    self.assertIn('\nleft=\n', '\n' + run.stdout + '\n')  # sourced: no helper left in the step's shell
 
 
 class Shared(unittest.TestCase):
