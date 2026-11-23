@@ -371,21 +371,24 @@ class Shared(unittest.TestCase):
         steps = [step(workflow('apply.yml')['jobs']['apply'], 'name', 'Prepare reviewed image and private kubeconfig')]
         steps += [step(workflow(wf)['jobs'][job], 'name', 'Read manifest file')
                   for wf, job in (('validate-and-plan.yml', 'validate-and-plan'), ('drift.yml', 'check'))]
+        newer = {'name': 'k3s', 'custom_data': {'vm_name': 'packer-k3s-13.7.0-2'}}
+        cases = [([K3S, OLD, STORAGE], K3S_NAME), ([STORAGE, OLD, K3S], K3S_NAME), ([OLD], None),
+                 ([K3S, STORAGE, newer], 'packer-k3s-13.7.0-2')]  # duplicate k3s: every step takes the last
         for step_ in steps:
-            for builds in ([K3S, OLD, STORAGE], [STORAGE, OLD, K3S], [OLD]):
-                with self.subTest(step=step_['name'], builds=[b['name'] for b in builds]):
+            for builds, want in cases:
+                with self.subTest(step=step_['name'], builds=[b['custom_data']['vm_name'] for b in builds]):
                     box = Sandbox(self)
                     box.fake('python3', 'exec %s "$@"\n' % sys.executable)
                     (box.dir / 'packer-manifest.json').write_text(json.dumps({'builds': builds}))
                     (box.dir / 'env').touch()
                     run = box.run(step_['run'], dict(GITHUB_ENV=str(box.dir / 'env'), KUBECONFIG_RAW='kube',
                                                      KUBECONFIG=str(box.dir / 'kubeconfig')))
-                    if builds == [OLD]:
+                    if want is None:
                         self.assertNotEqual(run.returncode, 0)
                         self.assertNotIn('TF_VAR_base_vm_name', box.read('env'))
                     else:
                         self.assertEqual(run.returncode, 0, run.stderr)
-                        self.assertEqual(box.read('env'), 'TF_VAR_base_vm_name=%s\n' % K3S_NAME)
+                        self.assertEqual(box.read('env'), 'TF_VAR_base_vm_name=%s\n' % want)
         for wf, step_ in (('validate-and-plan.yml', 'Create Terraform plan'), ('drift.yml', 'Check for drift')):
             job = next(iter(j for j in workflow(wf)['jobs'].values() if step_ in [s.get('name') for s in j['steps']]))
             self.assertNotIn('TF_VAR_base_vm_name', step(job, 'name', step_).get('env', {}), wf)

@@ -179,7 +179,7 @@ jobs:
           import json, os
           from pathlib import Path
           builds = json.loads(Path('packer-manifest.json').read_text())['builds']
-          name = next(b for b in builds if b['name'] == 'k3s')['custom_data']['vm_name']  # StopIteration fails the step
+          name = [b for b in builds if b['name'] == 'k3s'][-1]['custom_data']['vm_name']  # last match, as the jq steps; IndexError fails the step
           if not name or '\n' in name or '\r' in name:
               raise ValueError('Invalid image name')
           with open(os.environ['GITHUB_ENV'], 'a') as stream:
