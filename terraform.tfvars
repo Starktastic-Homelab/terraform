@@ -24,6 +24,13 @@ network_interfaces = [
 
 nameserver = "10.9.9.1"
 
+# Worker storage-bridge NIC (net2/ipconfig2); addresses must equal ansible storage_vm_workers.
+storage_nic = {
+  bridge       = "vmbr2"
+  base_cidr    = "10.99.2.0/24"
+  start_offset = 21
+}
+
 # Retained CSI requires the old worker cohort to disappear on a fresh control plane.
 # First enablement replaces both workers; later worker-only changes stay independent.
 rebuild_workers_with_control_plane = true

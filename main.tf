@@ -71,8 +71,11 @@ module "worker_nodes" {
   ciuser  = var.username
   sshkeys = var.ssh_pub_key
 
-  network_bridges   = local.network_bridges
-  ipconfigs         = local.worker_ipconfigs[count.index]
+  # The storage NIC goes last, so ipconfig0 stays Ansible's address; its subnet is never routed (no gateway).
+  network_bridges = concat(local.network_bridges, var.storage_nic == null ? [] : [var.storage_nic.bridge])
+  ipconfigs = concat(local.worker_ipconfigs[count.index], var.storage_nic == null ? [] : [
+    "ip=${cidrhost(var.storage_nic.base_cidr, var.storage_nic.start_offset + count.index)}/${split("/", var.storage_nic.base_cidr)[1]}"
+  ])
   nameserver        = var.nameserver
   cloudinit_storage = var.cloudinit_storage
   os_storage        = var.os_storage
