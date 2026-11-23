@@ -414,8 +414,6 @@ class WiringTests(unittest.TestCase):
         for action in (ROOT/'.github/actions').glob('*/action.yml'):
             for step in yaml.safe_load(action.read_text())['runs']['steps']:
                 self.assertNotIn('${{',step.get('run',''),action)
-        helper=next(x for x in job['steps'] if x.get('with',{}).get('path')=='maintenance-helper')
-        self.assertRegex(helper['with']['ref'],r'^[0-9a-f]{40}$')
         mutation=[(name,step) for name,j in doc['jobs'].items() for step in j.get('steps',[])
                   if 'maintenance_apply.py' in step.get('run','')]
         self.assertEqual(len(mutation),1)
@@ -431,5 +429,15 @@ class WiringTests(unittest.TestCase):
                 condition=dispatch['if'].replace('!cancelled()','True').replace('&&',' and ')
                 condition=condition.replace('needs.apply.result',repr(result)).replace('needs.apply.outputs.has_changes',repr(changed))
                 self.assertEqual(eval(condition,{'__builtins__':{}},{}),result=='success' and changed=='true')
+
+    def test_lock_helper_comes_from_ansible_main(self):
+        # Same helper as ansible's deploy/storage workflows: ansible main, never this run's or a feature branch's copy.
+        import yaml
+        helpers=[(w.name,s['with']) for w in (ROOT/'.github/workflows').glob('*.y*ml')
+                 for j in yaml.safe_load(w.read_text())['jobs'].values() for s in j.get('steps',[])
+                 if s.get('with',{}).get('path')=='maintenance-helper']
+        self.assertEqual(sorted(n for n,_ in helpers),['apply.yml','validate-and-plan.yml'])
+        for name,w in helpers:
+            self.assertEqual((w['repository'],w['ref'],w['persist-credentials']),('Starktastic-Homelab/ansible','main',False),name)
 
 if __name__=='__main__':unittest.main()
