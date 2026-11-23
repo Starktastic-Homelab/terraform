@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,8 +26,10 @@ VM = 'proxmox_virtual_environment_vm.storage'
 GENERATION = 'terraform_data.generation'
 PROVIDER = 'provider["registry.terraform.io/bpg/proxmox"]'
 KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA offline-fixture'
-DISKS = [dict(interface='virtio1', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-0.raw', size=64),
-         dict(interface='virtio2', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-1.raw', size=32)]
+DISKS = [dict(interface='virtio1', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-0.raw', size=64,
+              serial='retained'),
+         dict(interface='virtio2', datastore_id='k3s-block', path_in_datastore='9990/vm-9990-disk-1.raw', size=32,
+              serial='regen')]
 FIXTURE = dict(storage_template_vmid=902, vm_id=250, name='offline-storage',
                lan_ipv4='192.0.2.20/24', lan_gateway=None, storage_bridge='offline1',
                storage_ipv4='198.51.100.20/24', nameserver='192.0.2.1', cloudinit_datastore='local-zfs',
@@ -47,6 +50,15 @@ def run(root, *args, success=True, env=None):
 def plan(root, *args, env=None):
     run(root, 'plan', '-refresh=false', '-input=false', '-no-color', '-out=case.tfplan', *args, env=env)
     return json.loads(run(root, 'show', '-json', 'case.tfplan').stdout)
+
+
+def planned(document, address=VM):
+    return next(r['values'] for r in document['planned_values']['root_module']['resources']
+                if r['address'] == address)
+
+
+def generation_input(document):
+    return planned(document, GENERATION)['input']
 
 
 def actions(document):
@@ -148,7 +160,7 @@ class StorageRoot(unittest.TestCase):
         self.assertFalse(root.get('path_in_datastore'))
         for expected in DISKS:
             disk = disks[expected['interface']]
-            for key in ('datastore_id', 'path_in_datastore', 'size'):
+            for key in ('datastore_id', 'path_in_datastore', 'size', 'serial'):
                 self.assertEqual(disk[key], expected[key], key)
             self.assertEqual((disk['file_format'], disk['discard'], disk['iothread']), ('raw', 'on', True))
         # A manual size change made outside Terraform shows up as a diff, never a replacement.
@@ -175,6 +187,39 @@ class StorageRoot(unittest.TestCase):
         for bad in (dict(DISKS[0], path_in_datastore=''), dict(DISKS[0], interface='virtio0')):
             result = self.plan_against(self.state, '-var=data_disks=' + json.dumps([bad, DISKS[1]]), success=False)
             self.assertIn('Every data disk needs a path_in_datastore', result.stdout + result.stderr)
+
+    def test_data_disk_serials_validated(self):
+        # The guest finds each disk by /dev/disk/by-id/virtio-<serial>, which virtio-blk caps at 20 bytes.
+        for bad in ([DISKS[0], dict(DISKS[1], serial='retained')], [dict(DISKS[0], serial=''), DISKS[1]],
+                    [dict(DISKS[0], serial='x' * 21), DISKS[1]], [dict(DISKS[0], serial='rétained'), DISKS[1]]):
+            result = self.plan_against(self.state, '-var=data_disks=' + json.dumps(bad), success=False)
+            self.assertIn('Every data disk needs a distinct serial', result.stdout + result.stderr)
+        self.plan_against(self.state, '-var=data_disks=' + json.dumps([dict(DISKS[0], serial='x' * 20), DISKS[1]]))
+
+    def test_production_tfvars(self):
+        # The committed storage/terraform.tfvars plus only the CI-supplied keys, no fixture.
+        with tempfile.TemporaryDirectory(prefix='terraform-storage-prod-') as tmp:
+            prod = Path(tmp)
+            prepare(STORAGE, prod, os.environ.get('STORAGE_PLUGIN_DIR'))
+            shutil.copy(STORAGE / 'terraform.tfvars', prod / 'terraform.tfvars')
+            (prod / 'keys.auto.tfvars.json').write_text(json.dumps(dict(ssh_pub_keys=[KEY])))
+            prod = plan(prod)
+        vm = planned(prod)
+        self.assertEqual((vm['clone'][0]['vm_id'], vm['vm_id'], vm['name']), (902, 101, 'storage-01'))
+        self.assertIsNone(vm.get('pool_id'))
+        self.assertEqual(vm['tags'], ['storage'])
+        disks = {d['interface']: (d['datastore_id'], d.get('path_in_datastore'), d['size']) for d in vm['disk']}
+        self.assertEqual(disks['virtio1'], ('k3s-block', '9998/vm-9998-disk-0.raw', 232))
+        self.assertEqual(disks['virtio2'], ('k3s-block', '9998/vm-9998-disk-1.raw', 56))
+        # The placeholder VMID owns the data disks; it must never be a real VM or template.
+        self.assertNotIn(9998, (9999, 900, 901, 902, 200, 201, 202, 300, 100))
+        self.assertEqual({d['interface']: d['serial'] for d in vm['disk'] if d['interface'] != 'virtio0'},
+                         {'virtio1': 'retained', 'virtio2': 'regen'})
+        self.assertEqual([c['ipv4'][0]['address'] for c in vm['initialization'][0]['ip_config']],
+                         ['10.9.9.40/24', '10.99.2.10/24'])
+        self.assertEqual(vm['initialization'][0]['ip_config'][0]['ipv4'][0]['gateway'], '10.9.9.1')
+        self.assertEqual([n['bridge'] for n in vm['network_device']], ['vmbr0', 'vmbr2'])
+        self.assertEqual(generation_input(prod), '1')
 
     def test_destroy_keeps_unreferenced_disks(self):
         vm = self.planned_vm()
