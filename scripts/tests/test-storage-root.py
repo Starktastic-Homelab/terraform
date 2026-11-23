@@ -211,8 +211,9 @@ class StorageRoot(unittest.TestCase):
         disks = {d['interface']: (d['datastore_id'], d.get('path_in_datastore'), d['size']) for d in vm['disk']}
         self.assertEqual(disks['virtio1'], ('k3s-block', '9998/vm-9998-disk-0.raw', 232))
         self.assertEqual(disks['virtio2'], ('k3s-block', '9998/vm-9998-disk-1.raw', 56))
-        # The placeholder VMID owns the data disks; it must never be a real VM or template.
-        self.assertNotIn(9998, (9999, 900, 901, 902, 200, 201, 202, 300, 100))
+        # The placeholder VMID owns the data disks; it must never be the storage VM or its template.
+        placeholder = int(disks['virtio1'][1].split('/')[0])
+        self.assertNotIn(placeholder, (vm['vm_id'], vm['clone'][0]['vm_id']))
         self.assertEqual({d['interface']: d['serial'] for d in vm['disk'] if d['interface'] != 'virtio0'},
                          {'virtio1': 'retained', 'virtio2': 'regen'})
         self.assertEqual([c['ipv4'][0]['address'] for c in vm['initialization'][0]['ip_config']],
