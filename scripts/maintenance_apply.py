@@ -150,14 +150,15 @@ def execute(mode, saved_plan, root=Path('/maintenance'), workdir=None):
                     vmid = int(plan['variables']['storage_template_vmid']['value'])
                     root_disk = next(((d['datastore_id'], d['size']) for d in (create['change'].get('after') or {}).get('disk') or []
                                       if d.get('interface') == 'virtio0'), None)
-                    # No planned root disk would skip the disk comparison, so it refuses (fail closed).
-                    ok = root_disk is not None and check_clone_source.main(vmid, root_disk) == 0
+                    name = plan['variables']['storage_template_name']['value']
+                    # No planned root disk or template name would skip that comparison, so it refuses (fail closed).
+                    ok = root_disk is not None and bool(name) and check_clone_source.main(vmid, root_disk, name=name) == 0
                 except Exception:
                     ok = False
                 if not ok:
                     release(root, owner, nonce)
-                    raise SystemExit(f'Refusing apply: clone source {vmid} is missing, not a template, or unreadable,'
-                                     ' or the plan lacks its template VMID or virtio0 root disk')
+                    raise SystemExit(f'Refusing apply: clone source {vmid} is missing, not a template, misnamed or'
+                                     ' unreadable, or the plan lacks its template VMID, template name or virtio0 root disk')
         if mode == 'drain':
             nodes = json.loads(run('kubectl', 'get', 'nodes', '-o', 'json', capture=True).stdout)['items']
             workers = []; masters = []

@@ -1,6 +1,16 @@
 variable "storage_template_vmid" {
   type        = number
-  description = "VMID of the Packer storage template to clone; ignored after creation"
+  description = "VMID of the Packer storage template (the manifest entry's artifact_id); ignored after creation"
+}
+
+variable "storage_template_name" {
+  type        = string
+  description = "PVE name of the template at storage_template_vmid (the manifest's storage entry); only the clone check reads it"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9.-]+$", var.storage_template_name))
+    error_message = "storage_template_name must be a PVE VM name (letters, digits, dots and hyphens)."
+  }
 }
 
 variable "node_name" {

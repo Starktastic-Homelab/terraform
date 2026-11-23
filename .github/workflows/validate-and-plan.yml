@@ -112,6 +112,9 @@ jobs:
             echo 'planned=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # The template comes from the manifest's storage entry; none while tfvars exists fails the step.
+          apk add --no-cache jq
+          . scripts/storage_template_env.sh
 
           set +e
           terraform -chdir=storage plan -no-color -input=false -detailed-exitcode -out=plan.tfplan > storage/plan.log

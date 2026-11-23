@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exit 0 only if the Proxmox VMID given is a template; 1 if absent or not a template.
 
-main(vmid, root_disk=(datastore, size_gib)) also compares the template's virtio0 with the plan's root disk.
+main(vmid, root_disk=(datastore, size_gib)) also compares the template's virtio0 with the plan's root disk, and
+name= its PVE name (checked before the config read).
 
 Reads PROXMOX_VE_ENDPOINT and PROXMOX_VE_API_TOKEN (bpg's env), and PROXMOX_VE_INSECURE=true to skip TLS checks.
 Any other failure (missing env, HTTP error) raises, so the step also fails.
@@ -24,12 +25,15 @@ def get(path):
         return json.load(response)['data']
 
 
-def main(vmid, root_disk=None):
+def main(vmid, root_disk=None, name=None):
     row = next((r for r in get('cluster/resources?type=vm') if r.get('vmid') == vmid and r.get('template') == 1), None)
     if row is None:
         print(f'clone source {vmid} is missing or not a template', file=sys.stderr)
         return 1
-    print(f'clone source {vmid} is a template')
+    if name is not None and row.get('name') != name:
+        print(f"clone source {vmid} is named {row.get('name')}, plan wants {name}", file=sys.stderr)
+        return 1
+    print(f'clone source {vmid} is a template' + (f' named {name}' if name is not None else ''))
     if root_disk is None:
         return 0
     disk = get(f"nodes/{row['node']}/qemu/{vmid}/config").get('virtio0')

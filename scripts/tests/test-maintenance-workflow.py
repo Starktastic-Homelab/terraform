@@ -201,7 +201,7 @@ class WorkflowTests(unittest.TestCase):
                                      'change':{'actions':actions,'before':None,'after':{'disk':[
                                          {'interface':'virtio1','datastore_id':'k3s-block','size':64},
                                          {'interface':'virtio0','datastore_id':'local-zfs','size':4}]}}}],
-                'variables':{'storage_template_vmid':{'value':902}}}
+                'variables':{'storage_template_vmid':{'value':902},'storage_template_name':{'value':'packer-storage-13.7.0-1'}}}
 
     def test_clone_check_runs_only_for_a_create(self):
         self.storage_plan()
@@ -210,7 +210,7 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(actions=actions),patch('maintenance_apply.subprocess.run',side_effect=self.run_command),\
                     patch('maintenance_apply.check_clone_source.main',return_value=0) as main:
                 execute('normal',True,self.lock,workdir='storage')
-                if called:main.assert_called_once_with(902,('local-zfs',4))
+                if called:main.assert_called_once_with(902,('local-zfs',4),name='packer-storage-13.7.0-1')
                 else:main.assert_not_called()
 
     def assert_clone_refusal(self,plan=None,pattern='clone source 902',**main):
@@ -230,7 +230,10 @@ class WorkflowTests(unittest.TestCase):
         no_vmid=self.storage_vm(['create']);del no_vmid['variables']
         no_root=self.storage_vm(['create'])
         no_root['resource_changes'][0]['change']['after']['disk']=[{'interface':'virtio1','datastore_id':'k3s-block','size':64}]
-        for name,plan in [('no storage_template_vmid',no_vmid),('no virtio0',no_root)]:
+        no_name=self.storage_vm(['create']);del no_name['variables']['storage_template_name']
+        empty_name=self.storage_vm(['create']);empty_name['variables']['storage_template_name']['value']=''
+        for name,plan in [('no storage_template_vmid',no_vmid),('no virtio0',no_root),
+                          ('no storage_template_name',no_name),('empty storage_template_name',empty_name)]:
             with self.subTest(name):
                 # The check itself would pass: a missing input alone must refuse (fail closed).
                 self.commands=[];self.assert_clone_refusal(plan,'Refusing apply: clone source',return_value=0)

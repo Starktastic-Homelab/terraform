@@ -88,6 +88,8 @@ Changing a contract means changing both sides together; see `../CLAUDE.md`.
   `validate-and-plan.yml` (the test in `scripts/tests/test-maintenance-workflow.py` holds it there).
 - Proxmox credentials: bpg (`storage/`, `check_clone_source.py`) reads `PROXMOX_VE_*`, mapped from the same
   `PM_*` secrets and `TF_VAR_SSH_PUB_KEY` by `scripts/bpg_env.sh`.
+- Storage template ← packer: the `storage` entry of `packer-manifest.json` (`scripts/storage_template_env.sh`); the
+  clone check refuses when the template at that VMID is missing, has another name or another root disk.
 - `KUBECONFIG_RAW` ← ansible (org secret; used by drain mode). CSI pool ↔ ansible/apps: `terraform.tfvars`.
 
 ## Git

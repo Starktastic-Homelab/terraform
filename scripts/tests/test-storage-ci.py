@@ -21,6 +21,8 @@ WORKFLOWS = ROOT / '.github/workflows'
 KEY1 = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA one'
 KEY2 = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB two'
 FAKE_PM = dict(PM_API_URL='https://192.0.2.5:8006/api2/json', PM_API_TOKEN_ID='ci@pve!t', PM_API_TOKEN_SECRET='s')
+TEMPLATE = {'name': 'storage', 'artifact_id': '902', 'custom_data': {'vm_name': 'packer-storage-13.7.0-1'}}
+OTHER = {'name': 'k3s', 'artifact_id': '901', 'custom_data': {'vm_name': 'packer-k3s-13.7.0-1'}}
 PR = '/pr-${{ github.event.pull_request.number }}/'
 
 
@@ -39,7 +41,7 @@ def index(job, key, value):
 class Sandbox:
     """A temp checkout with scripts/ linked in, fake executables first on PATH, and a GITHUB_OUTPUT file."""
 
-    def __init__(self, test, plan_exit=0, tfvars=False):
+    def __init__(self, test, plan_exit=0, tfvars=False, manifest=(OTHER, TEMPLATE)):
         tmp = tempfile.TemporaryDirectory()
         test.addCleanup(tmp.cleanup)
         self.dir = Path(tmp.name)
@@ -47,9 +49,13 @@ class Sandbox:
         (self.dir / 'storage').mkdir()
         if tfvars:
             (self.dir / 'storage/terraform.tfvars').write_text('vm_id = 250\n')
+        if manifest is not None:
+            (self.dir / 'packer-manifest.json').write_text(json.dumps({'builds': list(manifest)}))
         self.bin = self.dir / 'bin'
         self.bin.mkdir()
-        self.fake('terraform', 'echo "$*" >> "$CALLS"\ncase " $* " in *" plan "*) echo fake plan; exit %d;; esac\n' % plan_exit)
+        self.fake('terraform', 'echo "$*" >> "$CALLS"\ncase " $* " in *" plan "*)\n'
+                  '  echo "$TF_VAR_storage_template_vmid $TF_VAR_storage_template_name" >> "$CALLS.vars"\n'
+                  '  echo fake plan; exit %d;; esac\n' % plan_exit)
         self.fake('apk', 'exit 0\n')
         self.fake('python3', 'if [ "$1" = -c ]; then exec %s "$@"; fi\necho "$*" >> "$CALLS"\n' % sys.executable)
         self.output = self.dir / 'output'
@@ -120,8 +126,8 @@ class PlanWorkflow(unittest.TestCase):
         self.job = workflow('validate-and-plan.yml')['jobs']['validate-and-plan']
         self.plan = step(self.job, 'id', 'storage-plan')
 
-    def run_plan(self, k3s_exit, storage_exit, tfvars=True):
-        box = Sandbox(self, plan_exit=storage_exit, tfvars=tfvars)
+    def run_plan(self, k3s_exit, storage_exit, tfvars=True, **manifest):
+        box = Sandbox(self, plan_exit=storage_exit, tfvars=tfvars, **manifest)
         (box.dir / 'plan.exitcode').write_text('%d\n' % k3s_exit)
         (box.dir / 'plan.log').write_text('k3s plan\n')
         return box, box.run(self.plan['run'], workflow_env(self.job, self.plan))
@@ -201,6 +207,17 @@ class PlanWorkflow(unittest.TestCase):
         _, run = self.run_plan(2, 2, tfvars=False)
         self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_storage_plan_reads_manifest_only_with_tfvars(self):
+        box, run = self.run_plan(0, 2, tfvars=False, manifest=None)  # main has no storage entry before Task 3.3
+        self.assertEqual((run.returncode, box.outputs()), (0, {'planned': 'false'}), run.stderr)
+        box, run = self.run_plan(0, 2, manifest=[OTHER])
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse([c for c in box.read('calls').splitlines() if c.startswith('-chdir=storage plan')])
+        self.assertNotIn('planned', box.outputs())
+        box, run = self.run_plan(0, 2)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(box.read('calls.vars'), '902 packer-storage-13.7.0-1\n')
+
     def test_maintenance_tests_job_runs_this_file(self):
         runs = [s.get('run', '') for s in workflow('validate-and-plan.yml')['jobs']['maintenance-tests']['steps']]
         self.assertIn('python3 scripts/tests/test-storage-ci.py', runs)
@@ -265,8 +282,8 @@ class DriftWorkflow(unittest.TestCase):
         self.job = workflow('drift.yml')['jobs']['check']
         self.storage = step(self.job, 'id', 'storage-plan')
 
-    def run_drift(self, storage_exit, tfvars=True):
-        box = Sandbox(self, plan_exit=storage_exit, tfvars=tfvars)
+    def run_drift(self, storage_exit, tfvars=True, **manifest):
+        box = Sandbox(self, plan_exit=storage_exit, tfvars=tfvars, **manifest)
         (box.dir / 'drift.log').write_text('k3s plan\n')
         return box, box.run(self.storage['run'], workflow_env(self.job, self.storage))
 
@@ -299,6 +316,40 @@ class DriftWorkflow(unittest.TestCase):
         self.assertNotEqual(run.returncode, 0)
 
 
+    def test_drift_reads_manifest_only_with_tfvars(self):
+        box, run = self.run_drift(2, tfvars=False, manifest=None)
+        self.assertEqual((run.returncode, box.outputs()), (0, {'drift': 'false'}), run.stderr)
+        box, run = self.run_drift(2, manifest=[OTHER])
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse([c for c in box.read('calls').splitlines() if c.startswith('-chdir=storage plan')])
+        self.assertNotIn('drift', box.outputs())
+        box, run = self.run_drift(2)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(box.read('calls.vars'), '902 packer-storage-13.7.0-1\n')
+
+
+class StorageTemplateEnv(unittest.TestCase):
+    def test_storage_template_env(self):
+        newer = dict(TEMPLATE, artifact_id='903', custom_data={'vm_name': 'packer-storage-13.7.0-2'})
+        good = [([OTHER, TEMPLATE], ('902', 'packer-storage-13.7.0-1')),
+                ([TEMPLATE, OTHER, newer], ('903', 'packer-storage-13.7.0-2'))]  # two storage entries: the last
+        bad = [[OTHER], [{k: v for k, v in TEMPLATE.items() if k != 'artifact_id'}],
+               [dict(TEMPLATE, artifact_id='abc')], [dict(TEMPLATE, custom_data={})]]
+        base = {k: v for k, v in os.environ.items() if not k.startswith('TF_VAR_')}
+        for builds, want in good + [(b, None) for b in bad]:
+            with self.subTest(builds=builds):
+                box = Sandbox(self, manifest=builds)
+                run = box.run('. scripts/storage_template_env.sh; env', base)
+                lines = [l for l in run.stdout.splitlines() if l.startswith('TF_VAR_storage_template_')]
+                if want is None:
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertEqual(lines, [])
+                else:
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(sorted(lines), ['TF_VAR_storage_template_name=' + want[1],
+                                                     'TF_VAR_storage_template_vmid=' + want[0]])
+
+
 class Shared(unittest.TestCase):
     def test_no_base_image_var_reaches_storage(self):
         found = 0
@@ -309,6 +360,11 @@ class Shared(unittest.TestCase):
                         found += 1
                         self.assertNotIn('TF_VAR_base_vm_name', step_.get('env', {}), name)
         self.assertEqual(found, 3)
+        # The converse: the k3s plan, drift and apply steps never see the storage template.
+        for name, step_name in (('validate-and-plan.yml', 'Create Terraform plan'), ('drift.yml', 'Check for drift'),
+                                ('apply.yml', 'Acquire ownership and execute infrastructure operation')):
+            job = next(j for j in workflow(name)['jobs'].values() if step_name in [s.get('name') for s in j['steps']])
+            self.assertNotIn('storage_template', json.dumps(step(job, 'name', step_name)), name)
 
     def test_storage_files_removed(self):
         for name, job in (('validate-and-plan.yml', 'validate-and-plan'), ('apply.yml', 'apply')):

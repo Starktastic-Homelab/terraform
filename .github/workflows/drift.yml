@@ -69,8 +69,9 @@ jobs:
             echo "drift=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          apk add --no-cache python3
+          apk add --no-cache python3 jq
           . scripts/bpg_env.sh
+          . scripts/storage_template_env.sh
           terraform -chdir=storage init -input=false
 
           set +e

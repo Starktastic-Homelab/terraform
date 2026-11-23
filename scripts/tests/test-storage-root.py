@@ -30,7 +30,7 @@ DISKS = [dict(interface='virtio1', datastore_id='k3s-block', path_in_datastore='
 FIXTURE = dict(storage_template_vmid=902, vm_id=250, name='offline-storage',
                lan_ipv4='192.0.2.20/24', lan_gateway=None, storage_bridge='offline1',
                storage_ipv4='198.51.100.20/24', nameserver='192.0.2.1', cloudinit_datastore='local-zfs',
-               ssh_pub_keys=[KEY], data_disks=DISKS, generation='1')
+               ssh_pub_keys=[KEY], data_disks=DISKS, generation='1', storage_template_name='packer-storage-13.7.0-1')
 # Source references to the storage root, not every mention of it (comments may name storage/).
 STORAGE_REFERENCE = re.compile(r'^\s*(source|path|config)\s*=\s*"[^"]*storage|data\s+"terraform_remote_state"', re.M)
 POOL_ID = re.compile(r'^\s*pool_id\s*=|variable\s+"pool_id"', re.M)
@@ -115,8 +115,21 @@ class StorageRoot(unittest.TestCase):
         self.assertEqual(actions(self.plan_against(self.state)), {VM: ['no-op'], GENERATION: ['no-op']})
 
     def test_template_change_is_noop(self):
-        self.assertEqual(actions(self.plan_against(self.state, '-var=storage_template_vmid=903')),
+        # Every packer build renames the template, so a manifest PR must leave the storage root untouched.
+        self.assertEqual(actions(self.plan_against(self.state, '-var=storage_template_vmid=903',
+                                                   '-var=storage_template_name=packer-storage-13.7.0-2')),
                          {VM: ['no-op'], GENERATION: ['no-op']})
+
+    def test_template_name_in_saved_plan(self):
+        # maintenance_apply.py reads it from terraform show -json, though no resource references it.
+        self.assertEqual(self.created['variables']['storage_template_name']['value'], 'packer-storage-13.7.0-1')
+
+    def test_template_name_validated(self):
+        for bad in ('', 'bad name'):
+            with self.subTest(bad=bad):
+                result = self.plan_against(self.state, '-var=storage_template_name=' + bad, success=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('storage_template_name', result.stdout + result.stderr)
 
     def test_generation_change_refused(self):
         result = self.plan_against(self.state, '-var=generation=2', success=False)

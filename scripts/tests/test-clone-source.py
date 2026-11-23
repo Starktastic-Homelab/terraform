@@ -19,7 +19,7 @@ ENV = dict(PROXMOX_VE_ENDPOINT='https://192.0.2.5:8006/', PROXMOX_VE_API_TOKEN='
 
 
 class CloneSourceRootDisk(unittest.TestCase):
-    def check(self, *args, config=CONFIG):
+    def check(self, *args, config=CONFIG, **kwargs):
         pages = {'/api2/json/cluster/resources?type=vm': RESOURCES, '/api2/json/nodes/pve/qemu/902/config': config}
         urls = []
 
@@ -31,7 +31,7 @@ class CloneSourceRootDisk(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with patch.dict(os.environ, ENV), patch('urllib.request.urlopen', urlopen), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = check_clone_source.main(902, *args)
+            code = check_clone_source.main(902, *args, **kwargs)
         return code, urls, out.getvalue() + err.getvalue()
 
     def test_matching_root_disk_passes(self):
@@ -52,8 +52,20 @@ class CloneSourceRootDisk(unittest.TestCase):
         self.assertIn('virtio0', text)
 
     def test_no_root_disk_reads_only_resources(self):
-        code, urls, _ = self.check()
+        code, urls, text = self.check()
         self.assertEqual((code, urls), (0, ['/api2/json/cluster/resources?type=vm']))
+        self.assertIn('clone source 902 is a template\n', text)
+
+    def test_matching_name_passes(self):
+        code, _, text = self.check(('local-zfs', 4), name='storage-template')
+        self.assertEqual(code, 0)
+        self.assertIn('clone source 902 is a template named storage-template', text)
+
+    def test_name_mismatch_prints_both_names(self):
+        code, urls, text = self.check(('local-zfs', 4), name='packer-storage-other')
+        self.assertEqual(code, 1)
+        self.assertIn('clone source 902 is named storage-template, plan wants packer-storage-other', text)
+        self.assertEqual(urls, ['/api2/json/cluster/resources?type=vm'])  # refuses before the config read
 
 
 if __name__ == '__main__':
