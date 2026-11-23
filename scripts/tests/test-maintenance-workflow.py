@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -35,7 +37,7 @@ class WorkflowTests(unittest.TestCase):
         (self.lock/'runner-instance').write_text('runner')
         self.env=patch.dict(os.environ,{'HOMELAB_RUNNER_INSTANCE':'runner','MAINTENANCE_OWNER':'terraform/test/1'})
         self.env.start();self.addCleanup(self.env.stop)
-        self.commands=[];self.fail=None
+        self.commands=[];self.calls=[];self.fail=None
         self.plan={'resource_changes':[]}
         self.output=self.root/'output'
         self.output_env=patch.dict(os.environ,{'GITHUB_OUTPUT':str(self.output)})
@@ -43,7 +45,7 @@ class WorkflowTests(unittest.TestCase):
         self.cwd=os.getcwd();os.chdir(self.root);self.addCleanup(os.chdir,self.cwd)
 
     def run_command(self,args,**kwargs):
-        self.commands.append(args)
+        self.commands.append(args);self.calls.append((kwargs.get('cwd'),args))
         # Every actual mutation sees the real persisted ownership record.
         self.assertTrue((self.lock/'operation.json').exists())
         if self.fail and self.fail in ' '.join(args):raise subprocess.CalledProcessError(1,args)
@@ -163,6 +165,83 @@ class WorkflowTests(unittest.TestCase):
         self.plan={'resource_changes':[vm(WORKER,['update'],CSI_DISK)]}
         with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):execute('destroy',False,self.lock)
         self.assertNotIn(['terraform','show','-json','plan.tfplan'],self.commands)
+
+    def storage_plan(self,code='2'):
+        Path('storage').mkdir(exist_ok=True)
+        Path('storage/plan.tfplan').write_bytes(b'fixture');Path('storage/plan.exitcode').write_text(code)
+
+    def test_chdir_runs_in_the_root_and_never_dispatches(self):
+        self.storage_plan()
+        with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+            self.assertTrue(execute('normal',True,self.lock,workdir='storage'))
+        self.assertTrue(all(cwd=='storage' for cwd,a in self.calls if a[0]=='terraform'))
+        self.assertIn(('storage',['terraform','apply','plan.tfplan']),self.calls)
+        out=dict(l.split('=',1) for l in self.output.read_text().splitlines())
+        self.assertEqual(out,{'changed':'true'})  # no has_changes, no drained_nodes
+        self.assertFalse((self.lock/'operation.json').exists())
+
+    def test_chdir_refuses_other_modes_before_lock(self):
+        self.storage_plan()
+        for mode,saved in [('drain',True),('destroy',True),('normal',False)]:
+            with self.subTest(mode=mode,saved=saved),patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+                with self.assertRaises(ValueError):execute(mode,saved,self.lock,workdir='storage')
+                self.assertEqual(self.commands,[])
+                self.assertFalse((self.lock/'operation.json').exists())
+
+    def test_chdir_reads_its_own_plan_files(self):
+        Path('plan.tfplan').write_bytes(b'fixture');Path('plan.exitcode').write_text('2')
+        Path('storage').mkdir();Path('storage/plan.tfplan').write_bytes(b'fixture')
+        with patch('maintenance_apply.subprocess.run',side_effect=self.run_command):
+            with self.assertRaisesRegex(ValueError,'PR plan or its successful exit status is missing'):
+                execute('normal',True,self.lock,workdir='storage')
+        self.assertEqual(self.commands,[])
+
+    def storage_vm(self,actions):
+        return {'resource_changes':[{'address':'proxmox_virtual_environment_vm.storage','type':'proxmox_virtual_environment_vm',
+                                     'change':{'actions':actions,'before':None,'after':{'disk':[
+                                         {'interface':'virtio1','datastore_id':'k3s-block','size':64},
+                                         {'interface':'virtio0','datastore_id':'local-zfs','size':4}]}}}],
+                'variables':{'storage_template_vmid':{'value':902},'storage_template_name':{'value':'packer-storage-13.7.0-1'}}}
+
+    def test_clone_check_runs_only_for_a_create(self):
+        self.storage_plan()
+        for actions,called in [(['delete','create'],True),(['create'],True),(['update'],False),(['no-op'],False)]:
+            self.plan=self.storage_vm(actions)
+            with self.subTest(actions=actions),patch('maintenance_apply.subprocess.run',side_effect=self.run_command),\
+                    patch('maintenance_apply.check_clone_source.main',return_value=0) as main:
+                execute('normal',True,self.lock,workdir='storage')
+                if called:main.assert_called_once_with(902,('local-zfs',4),name='packer-storage-13.7.0-1')
+                else:main.assert_not_called()
+
+    def assert_clone_refusal(self,plan=None,pattern='clone source 902',**main):
+        self.storage_plan();self.plan=plan or self.storage_vm(['create'])
+        with patch('maintenance_apply.subprocess.run',side_effect=self.run_command),\
+                patch('maintenance_apply.check_clone_source.main',**main):
+            with self.assertRaisesRegex(SystemExit,pattern):execute('normal',True,self.lock,workdir='storage')
+        self.assertFalse(any(cmd[:2]==['terraform','apply'] for cmd in self.commands))
+        # Nothing has changed yet, so a failed check must not leave a held lock.
+        self.assertFalse((self.lock/'operation.json').exists())
+        self.assertFalse(self.output.exists())
+
+    def test_missing_clone_source_refuses_before_apply(self):
+        self.assert_clone_refusal(return_value=1)
+
+    def test_unreadable_clone_inputs_refuse_and_release_lock(self):
+        no_vmid=self.storage_vm(['create']);del no_vmid['variables']
+        no_root=self.storage_vm(['create'])
+        no_root['resource_changes'][0]['change']['after']['disk']=[{'interface':'virtio1','datastore_id':'k3s-block','size':64}]
+        no_name=self.storage_vm(['create']);del no_name['variables']['storage_template_name']
+        empty_name=self.storage_vm(['create']);empty_name['variables']['storage_template_name']['value']=''
+        for name,plan in [('no storage_template_vmid',no_vmid),('no virtio0',no_root),
+                          ('no storage_template_name',no_name),('empty storage_template_name',empty_name)]:
+            with self.subTest(name):
+                # The check itself would pass: a missing input alone must refuse (fail closed).
+                self.commands=[];self.assert_clone_refusal(plan,'Refusing apply: clone source',return_value=0)
+
+    def test_clone_check_error_releases_lock(self):
+        for error in [ssl.SSLError('bad certificate'),urllib.error.URLError('refused')]:
+            with self.subTest(error=error):
+                self.commands=[];self.assert_clone_refusal(side_effect=error)
 
 class CsiWwnGuardTests(unittest.TestCase):
     def test_only_in_place_updates_of_vms_holding_scsi_disks_are_flagged(self):
@@ -416,8 +495,16 @@ class WiringTests(unittest.TestCase):
                 self.assertNotIn('${{',step.get('run',''),action)
         mutation=[(name,step) for name,j in doc['jobs'].items() for step in j.get('steps',[])
                   if 'maintenance_apply.py' in step.get('run','')]
-        self.assertEqual(len(mutation),1)
-        self.assertEqual(mutation[0][0],'apply')
+        self.assertEqual([name for name,_ in mutation],['apply','apply'])
+        # The storage root applies second, only where the k3s step applies a downloaded saved plan.
+        storage=mutation[1][1]
+        self.assertEqual(storage['id'],'apply-storage')
+        self.assertLess(steps.index(change),steps.index(storage))
+        self.assertEqual(storage['if'],download['if'])
+        for event in ['workflow_dispatch','pull_request_target']:
+            for mode in ['normal','drain','destroy']:
+                expression=storage['if'].replace('&&',' and ').replace('env.APPLY_MODE',repr(mode)).replace('github.event_name',repr(event))
+                self.assertEqual(eval(expression,{'__builtins__':{}},{}),event=='pull_request_target' and mode!='destroy',(event,mode))
         self.assertNotIn('always()',doc['jobs']['trigger-ansible']['if'])
         self.assertEqual(job['outputs']['drained_nodes'], '${{ steps.apply.outputs.drained_nodes }}')
         dispatch=doc['jobs']['trigger-ansible']

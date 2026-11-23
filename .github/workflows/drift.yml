@@ -20,7 +20,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
       AWS_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT }}
     outputs:
-      drift_detected: ${{ steps.plan.outputs.drift }}
+      drift_detected: ${{ steps.plan.outputs.drift == 'true' || steps.storage-plan.outputs.drift == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -59,12 +59,48 @@ jobs:
 
           base64 drift.log > drift.log.b64
 
+      - name: Check the storage root for drift
+        id: storage-plan
+        env:
+          TF_VAR_ssh_pub_key: ${{ vars.TF_VAR_SSH_PUB_KEY }}
+        run: |
+          if [ ! -f storage/terraform.tfvars ]; then
+            echo "storage root has no terraform.tfvars: not checked"
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          apk add --no-cache python3 jq
+          . scripts/bpg_env.sh
+          . scripts/storage_template_env.sh
+          terraform -chdir=storage init -input=false
+
+          set +e
+          terraform -chdir=storage plan -detailed-exitcode -no-color -input=false > storage/drift.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 2 ]; then
+            echo "⚠️ Storage root drift detected!"
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            printf '\n## storage root\n\n' >> drift.log
+            cat storage/drift.log >> drift.log
+          elif [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ No storage root drift."
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            cat storage/drift.log
+            echo "❌ Terraform error in the storage root"
+            exit 1
+          fi
+
+          base64 drift.log > drift.log.b64
+
       - name: Publish job summary
         if: always()
         run: |
           echo "### 🌍 Terraform Status" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.plan.outputs.drift }}" == "true" ]; then
+          if [ "${{ steps.plan.outputs.drift == 'true' || steps.storage-plan.outputs.drift == 'true' }}" == "true" ]; then
              echo "⚠️ **Drift detected**" >> $GITHUB_STEP_SUMMARY
           else
              echo "✅ **Infrastructure matches configuration**" >> $GITHUB_STEP_SUMMARY
@@ -79,7 +115,7 @@ jobs:
           echo '</details>' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload drift log
-        if: steps.plan.outputs.drift == 'true'
+        if: steps.plan.outputs.drift == 'true' || steps.storage-plan.outputs.drift == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: drift-log

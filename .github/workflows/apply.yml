@@ -161,6 +161,16 @@ jobs:
           destination: .
           recursive: 'true'
 
+      # Before any mutation: a PR planned before the storage tfvars landed has no storage plan, and failing
+      # later would apply k3s and then lose its ansible dispatch to the failed storage step.
+      - name: Require the storage plan
+        if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
+        run: |
+          if [ -f storage/terraform.tfvars ] && [ ! -f storage/plan.exitcode ]; then
+            echo 'storage/terraform.tfvars exists but the PR has no storage plan; re-run the PR plan'
+            exit 1
+          fi
+
       - name: Prepare reviewed image and private kubeconfig
         env:
           KUBECONFIG_RAW: ${{ secrets.KUBECONFIG_RAW }}
@@ -187,9 +197,21 @@ jobs:
             python3 scripts/maintenance_apply.py --mode "$APPLY_MODE"
           fi
 
+      # Normal mode from its saved plan only: never on dispatch or destroy, and never feeds trigger-ansible.
+      - name: Apply the storage root
+        id: apply-storage
+        if: env.APPLY_MODE != 'destroy' && github.event_name == 'pull_request_target'
+        run: |
+          if [ ! -f storage/terraform.tfvars ] && [ ! -f storage/plan.exitcode ]; then
+            echo 'storage root not configured: nothing to apply'
+            exit 0
+          fi
+          . scripts/bpg_env.sh
+          python3 scripts/maintenance_apply.py --mode normal --saved-plan --chdir storage
+
       - name: Remove saved plan from the runner workspace
         if: always()
-        run: rm -f plan.tfplan plan.exitcode
+        run: rm -f plan.tfplan plan.exitcode storage/plan.tfplan storage/plan.exitcode
 
   trigger-ansible:
     name: Trigger Ansible after successful lock release
