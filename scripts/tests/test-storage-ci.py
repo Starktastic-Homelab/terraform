@@ -357,6 +357,13 @@ class StorageTemplateEnv(unittest.TestCase):
 
 
 class Shared(unittest.TestCase):
+    def test_storage_template_read_like_k3s(self):
+        # The storage entry is picked the way the k3s steps pick theirs: by name, the last match.
+        script = (ROOT / 'scripts/storage_template_env.sh').read_text()
+        storage = re.search(r"jq -ec '([^']+)'", script).group(1)
+        k3s = JQ.search((WORKFLOWS / 'drift.yml').read_text()).group(1)
+        self.assertEqual(storage.replace('"storage"', '"k3s"') + ' | .custom_data.vm_name', k3s)
+
     def test_manifest_selected_by_name(self):
         text = lambda wf: (WORKFLOWS / wf).read_text()
         for wf in ('apply.yml', 'validate-and-plan.yml', 'drift.yml'):
