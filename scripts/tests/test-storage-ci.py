@@ -24,6 +24,10 @@ FAKE_PM = dict(PM_API_URL='https://192.0.2.5:8006/api2/json', PM_API_TOKEN_ID='c
 TEMPLATE = {'name': 'storage', 'artifact_id': '902', 'custom_data': {'vm_name': 'packer-storage-13.7.0-1'}}
 OTHER = {'name': 'k3s', 'artifact_id': '901', 'custom_data': {'vm_name': 'packer-k3s-13.7.0-1'}}
 PR = '/pr-${{ github.event.pull_request.number }}/'
+K3S_NAME = 'packer-k3s-13.7.0-1'
+K3S, OLD, STORAGE = ({'name': n, 'custom_data': {'vm_name': v}} for n, v in (
+    ('k3s', K3S_NAME), ('debian-13', 'packer-debian-13.7.0-0'), ('storage', 'packer-storage-13.7.0-1')))
+JQ = re.compile(r"jq -er '([^']+)' packer-manifest\.json")
 
 
 def workflow(name):
@@ -353,6 +357,39 @@ class StorageTemplateEnv(unittest.TestCase):
 
 
 class Shared(unittest.TestCase):
+    def test_manifest_selected_by_name(self):
+        text = lambda wf: (WORKFLOWS / wf).read_text()
+        for wf in ('apply.yml', 'validate-and-plan.yml', 'drift.yml'):
+            self.assertFalse('builds[0]' in text(wf), wf)
+        expr = JQ.search(text('drift.yml')).group(1)
+        self.assertEqual(JQ.search(text('validate-and-plan.yml')).group(1), expr)
+        jq = lambda builds: subprocess.run(['jq', '-er', expr], input=json.dumps({'builds': builds}),
+                                           text=True, capture_output=True)
+        for builds in ([K3S, OLD, STORAGE], [STORAGE, OLD, K3S]):
+            self.assertEqual(jq(builds).stdout.strip(), K3S_NAME)
+        self.assertNotEqual(jq([OLD]).returncode, 0)  # a manifest without k3s fails loudly
+        steps = [step(workflow('apply.yml')['jobs']['apply'], 'name', 'Prepare reviewed image and private kubeconfig')]
+        steps += [step(workflow(wf)['jobs'][job], 'name', 'Read manifest file')
+                  for wf, job in (('validate-and-plan.yml', 'validate-and-plan'), ('drift.yml', 'check'))]
+        for step_ in steps:
+            for builds in ([K3S, OLD, STORAGE], [STORAGE, OLD, K3S], [OLD]):
+                with self.subTest(step=step_['name'], builds=[b['name'] for b in builds]):
+                    box = Sandbox(self)
+                    box.fake('python3', 'exec %s "$@"\n' % sys.executable)
+                    (box.dir / 'packer-manifest.json').write_text(json.dumps({'builds': builds}))
+                    (box.dir / 'env').touch()
+                    run = box.run(step_['run'], dict(GITHUB_ENV=str(box.dir / 'env'), KUBECONFIG_RAW='kube',
+                                                     KUBECONFIG=str(box.dir / 'kubeconfig')))
+                    if builds == [OLD]:
+                        self.assertNotEqual(run.returncode, 0)
+                        self.assertNotIn('TF_VAR_base_vm_name', box.read('env'))
+                    else:
+                        self.assertEqual(run.returncode, 0, run.stderr)
+                        self.assertEqual(box.read('env'), 'TF_VAR_base_vm_name=%s\n' % K3S_NAME)
+        for wf, step_ in (('validate-and-plan.yml', 'Create Terraform plan'), ('drift.yml', 'Check for drift')):
+            job = next(iter(j for j in workflow(wf)['jobs'].values() if step_ in [s.get('name') for s in j['steps']]))
+            self.assertNotIn('TF_VAR_base_vm_name', step(job, 'name', step_).get('env', {}), wf)
+
     def test_no_base_image_var_reaches_storage(self):
         found = 0
         for name in ('validate-and-plan.yml', 'apply.yml', 'drift.yml'):

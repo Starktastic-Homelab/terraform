@@ -80,7 +80,7 @@ next. Never commit `.terraform/`, `.terraform.lock.hcl` or `*.tfplan`.
 
 Changing a contract means changing both sides together; see `../CLAUDE.md`.
 
-- Image ← packer: `packer-manifest.json`; only `builds[0].custom_data.vm_name` is read (`apply.yml`,
+- Image ← packer: `packer-manifest.json`; the `k3s` entry's `custom_data.vm_name` is read by name (`apply.yml`,
   `validate-and-plan.yml`, `drift.yml`) into `var.base_vm_name` (`variables.tf`).
 - Dispatch → ansible: `trigger-ansible` job in `apply.yml`; payload from `scripts/maintenance_apply.py`.
 - Inventory → ansible: VM `tags` and `ipconfig0` in `main.tf`.
