@@ -79,8 +79,8 @@ Changing a contract means changing both sides together; see `../CLAUDE.md`.
   `validate-and-plan.yml`, `drift.yml`) into `var.base_vm_name` (`variables.tf`).
 - Dispatch → ansible: `trigger-ansible` job in `apply.yml`; payload from `scripts/maintenance_apply.py`.
 - Inventory → ansible: VM `tags` and `ipconfig0` in `main.tf`.
-- Maintenance lock ↔ ansible: helper checked out at a pinned ansible SHA in `apply.yml` and
-  `validate-and-plan.yml`; that SHA lives only on ansible's `codex/storage-maintenance` branch.
+- Maintenance lock ↔ ansible: helper checked out from ansible `main` in `apply.yml` and
+  `validate-and-plan.yml` (the test in `scripts/tests/test-maintenance-workflow.py` holds it there).
 - `KUBECONFIG_RAW` ← ansible (org secret; used by drain mode). CSI pool ↔ ansible/apps: `terraform.tfvars`.
 
 ## Git
