@@ -113,3 +113,13 @@ variable "k3s_resource_pool" {
     error_message = "k3s_resource_pool must be null or a valid dedicated pool name."
   }
 }
+
+variable "storage_nic" {
+  type = object({
+    bridge       = string
+    base_cidr    = string
+    start_offset = number
+  })
+  default     = null
+  description = "Worker-only NIC on the storage bridge, added after network_interfaces; worker N gets start_offset + N; null adds none"
+}

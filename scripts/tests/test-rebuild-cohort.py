@@ -103,6 +103,22 @@ def main():
         check('replace master', state, {node: ['delete', 'create'] for node in NODES}, enabled, '-replace=' + MASTER)
         check('replace one worker', state, dict(noop, **{WORKERS[0]: ['delete', 'create']}), enabled, '-replace=' + WORKERS[0])
         check('Packer image change', state, {node: ['delete', 'create'] for node in NODES}, enabled, '-var=base_vm_name=new-template')
+        def unset_as_zero(nics):
+            # The SDK re-plans unset optional fields of the whole list as zero values (None -> '' / 0).
+            return [{k: v or None for k, v in nic.items()} for nic in nics]
+
+        storage_nic = '-var=storage_nic={bridge="offline2",base_cidr="198.51.100.0/24",start_offset=21}'
+        document = check('storage NIC alone updates workers in place', state,
+                         dict(noop, **{w: ['update'] for w in WORKERS}), enabled, storage_nic)
+        for change in (c for c in document['resource_changes'] if c['address'] in WORKERS):
+            index = WORKERS.index(change['address'])
+            before, after = change['change']['before'], change['change']['after']
+            # The fixture has one interface, so the storage NIC is net1/ipconfig1 here (net2 in production).
+            assert after['network'][-1]['bridge'] == 'offline2', after['network']
+            assert unset_as_zero(after['network'][:-1]) == unset_as_zero(before['network']), (before['network'], after['network'])
+            assert after['ipconfig1'] == f'ip=198.51.100.{21 + index}/24', after['ipconfig1']
+        check('storage NIC folded into an image change', state, {node: ['delete', 'create'] for node in NODES},
+              enabled, storage_nic, '-var=base_vm_name=new-template')
 
         interrupted = copy.deepcopy(state)
         attributes(interrupted, MASTER)['smbios'][0]['uuid'] = NEW
@@ -134,7 +150,7 @@ def main():
         refusal = run(root, 'plan', '-refresh=false', '-input=false', '-no-color', enabled, success=False)
         assert refusal.returncode != 0 and 'exactly one control-plane VM' in refusal.stdout + refusal.stderr
         print('missing master UUID refused: passed', flush=True)
-        print('14 offline real-provider planning checks passed; no API access or apply.')
+        print('16 offline real-provider planning checks passed; no API access or apply.')
 
 
 if __name__ == '__main__':
