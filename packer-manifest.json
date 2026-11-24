@@ -16,20 +16,6 @@
       }
     },
     {
-      "name": "debian-13",
-      "builder_type": "proxmox-iso",
-      "build_time": 1795201570,
-      "files": null,
-      "artifact_id": "900",
-      "packer_run_uuid": "1bebbca6-393c-1575-3a71-44ec2fdac1fc",
-      "custom_data": {
-        "git_tag": "v13.7.0.20261120185343",
-        "i915_sriov_kernel_series": "6.12",
-        "i915_sriov_version": "2025.12.10.2",
-        "vm_name": "packer-debian-13.7.0-20261120185343"
-      }
-    },
-    {
       "name": "storage",
       "builder_type": "proxmox-clone",
       "build_time": 1795502947,

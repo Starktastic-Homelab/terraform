@@ -118,7 +118,7 @@ comes back clean it comments and closes the issue.
 | `variables.tf`, `terraform.tfvars` | Counts, sizes, bridges, the resource pool and the cohort switch |
 | `providers.tf` | The S3 backend and the pinned `telmate/proxmox` provider |
 | `outputs.tf` | IDs, names and addresses of the nodes |
-| `packer-manifest.json` | Written by packer's pull request; only `builds[0].custom_data.vm_name` is read |
+| `packer-manifest.json` | Written by packer's pull request; the `k3s` entry's `custom_data.vm_name` is read, by name |
 | `scripts/maintenance_apply.py` | The locked drain and apply that `apply.yml` runs |
 | `scripts/tests/` | The two offline suites that `validate-and-plan.yml` runs |
 | `.github/workflows/` | The five workflows below |
@@ -161,7 +161,7 @@ A real plan needs the same environment as the plan step in `validate-and-plan.ym
 export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_ENDPOINT_URL=...   # the S3 backend
 export PM_API_URL=... PM_API_TOKEN_ID=... PM_API_TOKEN_SECRET=...             # the Proxmox API token
 export TF_VAR_ssh_pub_key="ssh-ed25519 ..."
-export TF_VAR_base_vm_name="$(jq -r '.builds[0].custom_data.vm_name' packer-manifest.json)"
+export TF_VAR_base_vm_name="$(jq -er '[.builds[] | select(.name=="k3s")] | last | .custom_data.vm_name' packer-manifest.json)"
 
 terraform init
 terraform plan
