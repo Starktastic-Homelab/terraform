@@ -88,6 +88,7 @@ variable "data_disks" {
     datastore_id      = string
     path_in_datastore = string
     size              = number
+    serial            = string
   }))
   description = "Existing volumes owned by a placeholder VMID, attached in place (size in GiB)"
 
@@ -95,6 +96,12 @@ variable "data_disks" {
     # A missing path would reuse whatever volume state holds at that index; virtio0 is the root disk.
     condition     = alltrue([for d in var.data_disks : d.path_in_datastore != null && d.path_in_datastore != "" && d.interface != "virtio0"])
     error_message = "Every data disk needs a path_in_datastore and an interface other than virtio0."
+  }
+
+  validation {
+    # The guest finds each disk as /dev/disk/by-id/virtio-<serial>; virtio-blk reports at most 20 bytes, so ASCII only.
+    condition     = alltrue([for d in var.data_disks : can(regex("^[A-Za-z0-9._-]{1,20}$", d.serial))]) && length(distinct(var.data_disks[*].serial)) == length(var.data_disks)
+    error_message = "Every data disk needs a distinct serial of 1 to 20 ASCII letters, digits, dots, dashes or underscores."
   }
 }
 

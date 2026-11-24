@@ -67,6 +67,7 @@ resource "proxmox_virtual_environment_vm" "storage" {
       datastore_id      = disk.value.datastore_id
       path_in_datastore = disk.value.path_in_datastore
       size              = disk.value.size
+      serial            = disk.value.serial
       file_format       = "raw"
       discard           = "on"
       iothread          = true
