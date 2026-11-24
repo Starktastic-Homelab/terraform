@@ -1,6 +1,21 @@
 {
   "builds": [
     {
+      "name": "k3s",
+      "builder_type": "proxmox-clone",
+      "build_time": 1795503492,
+      "files": null,
+      "artifact_id": "901",
+      "packer_run_uuid": "620a238a-1137-c940-5a9b-f3822200fe21",
+      "custom_data": {
+        "git_tag": "v13.8.0.20261124064925",
+        "i915_sriov_kernel_series": "6.12",
+        "i915_sriov_version": "2025.12.10.2",
+        "role": "k3s",
+        "vm_name": "packer-k3s-debian-13.8.0-20261124064925"
+      }
+    },
+    {
       "name": "debian-13",
       "builder_type": "proxmox-iso",
       "build_time": 1795201570,
@@ -13,7 +28,20 @@
         "i915_sriov_version": "2025.12.10.2",
         "vm_name": "packer-debian-13.7.0-20261120185343"
       }
+    },
+    {
+      "name": "storage",
+      "builder_type": "proxmox-clone",
+      "build_time": 1795502947,
+      "files": null,
+      "artifact_id": "902",
+      "packer_run_uuid": "a1881828-43b4-3322-1cb3-cafd54937887",
+      "custom_data": {
+        "git_tag": "v13.8.0.20261124064734",
+        "role": "storage",
+        "vm_name": "packer-storage-debian-13.8.0-20261124064734"
+      }
     }
   ],
-  "last_run_uuid": "1bebbca6-393c-1575-3a71-44ec2fdac1fc"
+  "last_run_uuid": "a1881828-43b4-3322-1cb3-cafd54937887"
 }
