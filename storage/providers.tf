@@ -17,7 +17,7 @@ terraform {
     proxmox = {
       source = "bpg/proxmox"
       # Newest release on or before 2026-10-26; the version ADR 0017's lab qualified.
-      version = "0.118.0"
+      version = "0.123.1"
     }
   }
 }
