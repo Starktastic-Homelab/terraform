@@ -98,7 +98,7 @@ resource "proxmox_virtual_environment_vm" "storage" {
   reboot_after_update = false
 
   lifecycle {
-    prevent_destroy = false
+    prevent_destroy = true
     # Ansible guest_startup.yml owns startup, as for the k3s VMs.
     ignore_changes       = [clone, startup]
     replace_triggered_by = [terraform_data.generation]
