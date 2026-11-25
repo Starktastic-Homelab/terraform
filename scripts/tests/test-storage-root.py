@@ -230,7 +230,7 @@ class StorageRoot(unittest.TestCase):
                          ['10.9.9.40/24', '10.99.2.10/24'])
         self.assertEqual(vm['initialization'][0]['ip_config'][0]['ipv4'][0]['gateway'], '10.9.9.1')
         self.assertEqual([n['bridge'] for n in vm['network_device']], ['vmbr0', 'vmbr2'])
-        self.assertEqual(generation_input(prod), '1')
+        self.assertEqual(generation_input(prod), '2')
 
     def test_production_tfvars_needs_the_manifest(self):
         result = self.plan_production(dict(ssh_pub_keys=[KEY]), success=False)

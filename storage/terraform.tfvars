@@ -6,7 +6,7 @@ storage_bridge      = "vmbr2"
 storage_ipv4        = "10.99.2.10/24"
 nameserver          = "10.9.9.1"
 cloudinit_datastore = "local-zfs"
-generation          = "1"
+generation          = "2"
 data_disks = [
   {
     interface         = "virtio1"
