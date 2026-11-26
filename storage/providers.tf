@@ -16,7 +16,7 @@ terraform {
   required_providers {
     proxmox = {
       source = "bpg/proxmox"
-      # ADR 0017's lab qualified 0.118.0; 0.119.0-0.123.1 were reviewed from source and release notes (2026-11-24).
+      # ADR 0017's lab qualified 0.118.0; 0.119.0-0.124.0 were reviewed from source and release notes (2026-11-24, 0.124.0 on 2026-11-26).
       version = "0.124.0"
     }
   }
